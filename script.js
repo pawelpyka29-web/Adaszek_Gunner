@@ -11,7 +11,7 @@ import {
 "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "TWÓJ_API_KEY",
+  apiKey: "AIzaSyCanH2BBs2Up7BtN1AXQ1uyQd6YsmthT0w",
   authDomain: "pandixif-multiplayer.firebaseapp.com",
   databaseURL: "https://pandixif-multiplayer-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "pandixif-multiplayer",
