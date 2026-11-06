@@ -3,1340 +3,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neon Strike 2D - Multiplayer Simulator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <title>Neon Arena P2P Multiplayer</title>
+    <!-- Ładowanie biblioteki PeerJS z CDN -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap');
-
         * {
-            font-family: 'Rajdhani', sans-serif;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
             user-select: none;
         }
 
-        h1, h2, h3, .font-orbitron {
-            font-family: 'Orbitron', sans-serif;
+        body {
+            background-color: #080811;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
         }
 
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(15, 23, 42, 0.6);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #06b6d4;
-            border-radius: 3px;
-        }
-
-        /* Neon Glow Effects */
-        .neon-border-cyan {
-            box-shadow: 0 0 15px rgba(6, 182, 212, 0.4), inset 0 0 15px rgba(6, 182, 212, 0.2);
-            border: 1px solid #06b6d4;
-        }
-        .neon-border-pink {
-            box-shadow: 0 0 15px rgba(236, 72, 153, 0.4), inset 0 0 15px rgba(236, 72, 153, 0.2);
-            border: 1px solid #ec4899;
-        }
-        .neon-text-cyan {
-            text-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
-        }
-        .neon-text-pink {
-            text-shadow: 0 0 10px rgba(236, 72, 153, 0.8);
-        }
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-        }
-
-        /* Animations */
-        @keyframes pulse-glow {
-            0%, 100% { opacity: 0.8; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.03); }
-        }
-        .animate-pulse-glow {
-            animation: pulse-glow 2s infinite ease-in-out;
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
+            border: 2px solid #00f3ff;
+            border-radius: 8px;
+            background: #0d0e1b;
+            overflow: hidden;
         }
 
         canvas {
-            cursor: crosshair;
-            background-color: #090d16;
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #121526 0%, #080811 100%);
+        }
+
+        /* EKRANY MENU / LOBBY */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(8, 8, 17, 0.95);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            color: #00f3ff;
+            text-shadow: 0 0 15px #00f3ff;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            padding: 25px;
+            border-radius: 12px;
+            width: 340px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            text-align: center;
+        }
+
+        input[type="text"] {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00f3ff;
+            color: #fff;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 1rem;
+            outline: none;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        input[type="text"]:focus {
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        button {
+            background: linear-gradient(45deg, #00f3ff, #ff0077);
+            border: none;
+            color: white;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 15px rgba(255, 0, 119, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .code-display {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ff0077;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px dashed #ff0077;
+            letter-spacing: 4px;
+            cursor: pointer;
+        }
+
+        /* HUD W GRACH */
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .hud-box {
+            background: rgba(8, 8, 17, 0.7);
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+
+        .hp-bar-outer {
+            width: 150px;
+            height: 14px;
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid #ff0055;
+            border-radius: 7px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .hp-bar-inner {
+            height: 100%;
+            width: 100%;
+            background: #ff0055;
+            transition: width 0.1s ease;
+        }
+
+        #status-msg {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: 5px;
         }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen overflow-hidden flex flex-col justify-center items-center relative">
-
-    <!-- Background Grid & Effects -->
-    <div class="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none"></div>
-    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
-    <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-    <!-- MAIN CONTAINER -->
-    <div class="relative z-10 w-full max-w-6xl h-screen max-h-[900px] flex flex-col p-2 sm:p-4">
-
-        <!-- HEADER / NAVIGATION -->
-        <header class="flex justify-between items-center mb-3 px-4 py-2 glass-panel rounded-xl border border-slate-800 shadow-2xl">
-            <div class="flex items-center space-x-3">
-                <i class="fa-solid font-orbitron fa-crosshairs text-cyan-400 text-2xl animate-spin" style="animation-duration: 10s;"></i>
-                <h1 class="text-2xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-pink-500">
-                    NEON<span class="text-white">STRIKE</span> <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500 text-cyan-300 font-normal">2D v1.0</span>
-                </h1>
-            </div>
-            
-            <div id="userInfo" class="flex items-center space-x-4">
-                <div class="flex items-center space-x-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-700">
-                    <span class="text-xs text-slate-400 font-semibold">GRACZ:</span>
-                    <input type="text" id="playerNameInput" value="CyberHunter" maxlength="12" class="bg-transparent text-cyan-300 font-bold focus:outline-none w-28 text-sm">
-                    <i class="fa-solid fa-pen text-xs text-slate-500"></i>
-                </div>
-                <button id="soundToggleBtn" onclick="toggleSound()" class="p-2 bg-slate-900 rounded-lg border border-slate-700 hover:border-cyan-500 text-cyan-400 transition-all">
-                    <i id="soundIcon" class="fa-solid fa-volume-high"></i>
-                </button>
-            </div>
-        </header>
-
-        <!-- SCREEN 1: MAIN MENU (LOBBY BROWSER & CREATE) -->
-        <div id="screenMainMenu" class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 h-full overflow-hidden">
-            
-            <!-- Left Side: Join Rooms -->
-            <div class="md:col-span-7 glass-panel rounded-2xl p-5 border border-slate-800 flex flex-col justify-between relative overflow-hidden">
-                <div>
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold text-cyan-400 flex items-center gap-2">
-                            <i class="fa-solid fa-server text-sm"></i> DOSTĘPNE POKOJE
-                        </h2>
-                        <button onclick="refreshRooms()" class="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition">
-                            <i class="fa-solid fa-rotate-right mr-1"></i> Odśwież
-                        </button>
-                    </div>
-
-                    <!-- Room List Header -->
-                    <div class="grid grid-cols-12 gap-2 text-xs font-semibold text-slate-400 px-3 py-2 bg-slate-900/50 rounded-lg mb-2">
-                        <span class="col-span-5">NAZWA POKOJU</span>
-                        <span class="col-span-3 text-center">TRYB</span>
-                        <span class="col-span-2 text-center">GRACZE</span>
-                        <span class="col-span-2 text-right">AKCJA</span>
-                    </div>
-
-                    <!-- Room List Container -->
-                    <div id="roomList" class="space-y-2 overflow-y-auto max-h-[380px] pr-1">
-                        <!-- Rooms rendered via JS -->
-                    </div>
-                </div>
-
-                <!-- Direct Join Code Input -->
-                <div class="mt-4 pt-4 border-t border-slate-800 flex items-center gap-3">
-                    <input type="text" id="joinCodeInput" placeholder="Wpisz KOD pokoju (np. #8X9A)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm uppercase text-cyan-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
-                    <button onclick="joinByCode()" class="bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold px-5 py-2.5 rounded-xl transition shadow-lg shadow-cyan-950 flex items-center gap-2 text-sm">
-                        <i class="fa-solid fa-right-to-bracket"></i> Dołącz
-                    </button>
-                </div>
-            </div>
-
-            <!-- Right Side: Create Room & Quick Match -->
-            <div class="md:col-span-5 flex flex-col gap-4">
-                
-                <!-- Quick Play Card -->
-                <div class="glass-panel rounded-2xl p-5 border border-slate-800 bg-gradient-to-br from-cyan-950/30 to-slate-900/80">
-                    <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">
-                        <i class="fa-solid fa-bolt text-yellow-400"></i> SZYBKA GRA
-                    </h3>
-                    <p class="text-xs text-slate-400 mb-4">Wskocz od razu do losowej potyczki z botami AI i innymi graczami.</p>
-                    <button onclick="quickPlay()" class="w-full bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-cyan-500/20 text-center tracking-wider transition transform active:scale-95">
-                        ZAGRAJ NATYCHMIAST
-                    </button>
-                </div>
-
-                <!-- Create Room Box -->
-                <div class="glass-panel rounded-2xl p-5 border border-slate-800 flex-1 flex flex-col justify-between">
-                    <div>
-                        <h3 class="text-lg font-bold text-pink-400 mb-4 flex items-center gap-2">
-                            <i class="fa-solid fa-plus-circle"></i> STWÓRZ NOWY POKÓJ
-                        </h3>
-
-                        <div class="space-y-3 text-sm">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-400 mb-1">Nazwa Pokoju</label>
-                                <input type="text" id="newRoomName" value="CyberArena #1" maxlength="20" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-pink-500">
-                            </div>
-
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-400 mb-1">Tryb Gry</label>
-                                <select id="newRoomMode" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-pink-500">
-                                    <option value="FreeForAll">Free For All (Deathmatch)</option>
-                                    <option value="TeamDeathmatch">Drużynowy Deathmatch (TDM)</option>
-                                </select>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Max Graczy</label>
-                                    <select id="newRoomMaxPlayers" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-pink-500">
-                                        <option value="4">4 Graczy</option>
-                                        <option value="6" selected>6 Graczy</option>
-                                        <option value="8">8 Graczy</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-slate-400 mb-1">Wypełnij Botami</label>
-                                    <select id="newRoomBots" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-pink-500">
-                                        <option value="true">TAK (AI Bots)</option>
-                                        <option value="false">NIE (Tylko ludzie)</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button onclick="createNewRoom()" class="w-full mt-4 bg-pink-600 hover:bg-pink-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-pink-950 transition transform active:scale-95 flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-gamepad"></i> UTWÓRZ POKÓJ
-                    </button>
-                </div>
-
-            </div>
-        </div>
-
-        <!-- SCREEN 2: LOBBY ROOM (WAITING ROOM) -->
-        <div id="screenLobbyRoom" class="hidden flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 h-full overflow-hidden">
-            
-            <!-- Left Side: Player List & Room Details -->
-            <div class="md:col-span-8 glass-panel rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
-                <div>
-                    <!-- Room Header -->
-                    <div class="flex justify-between items-start mb-4 border-b border-slate-800 pb-3">
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <h2 id="lobbyTitle" class="text-2xl font-black text-cyan-400">CyberArena</h2>
-                                <span id="lobbyCodeBadge" class="text-xs px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 rounded font-mono">#CODE</span>
-                            </div>
-                            <p id="lobbySubtitle" class="text-xs text-slate-400 mt-1">Tryb: Free For All • Mapa: Cyber Grid</p>
-                        </div>
-                        <button onclick="leaveLobby()" class="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold rounded-xl transition">
-                            <i class="fa-solid fa-arrow-left mr-1"></i> Wyjdź z Pokoju
-                        </button>
-                    </div>
-
-                    <!-- Players Grid -->
-                    <h3 class="text-sm font-bold text-slate-300 mb-2">GRACZE W POKOJU (<span id="lobbyPlayerCount">1/6</span>)</h3>
-                    <div id="lobbyPlayerList" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[320px] overflow-y-auto p-1">
-                        <!-- Player Cards added via JS -->
-                    </div>
-                </div>
-
-                <!-- Footer Action Area -->
-                <div class="pt-4 border-t border-slate-800 flex items-center justify-between">
-                    <div class="flex items-center gap-2 text-xs text-slate-400">
-                        <i class="fa-solid fa-circle-info text-cyan-400"></i>
-                        <span>Gra rozpocznie się, gdy wszyscy gracze oznaczą gotowość.</span>
-                    </div>
-
-                    <button id="readyBtn" onclick="toggleReady()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-8 py-3 rounded-xl shadow-lg shadow-emerald-950 transition transform active:scale-95 flex items-center gap-2">
-                        <i class="fa-solid fa-check"></i> JESTEM GOTÓW!
-                    </button>
-                </div>
-            </div>
-
-            <!-- Right Side: Player Customization & Settings -->
-            <div class="md:col-span-4 glass-panel rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
-                <div>
-                    <h3 class="text-lg font-bold text-pink-400 mb-4 flex items-center gap-2">
-                        <i class="fa-solid fa-user-gear"></i> DOSTOSUJ POSTAĆ
-                    </h3>
-
-                    <!-- Color Picker -->
-                    <div class="mb-5">
-                        <label class="block text-xs font-semibold text-slate-400 mb-2">KOLOR CYBER-SKÓRKI</label>
-                        <div class="grid grid-cols-5 gap-2" id="colorPickerContainer">
-                            <!-- Colors generated via JS -->
-                        </div>
-                    </div>
-
-                    <!-- Weapon Loadout Selection -->
-                    <div class="mb-5">
-                        <label class="block text-xs font-semibold text-slate-400 mb-2">BROŃ STARTOWA</label>
-                        <div class="space-y-2">
-                            <label class="flex items-center justify-between p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-cyan-500 transition">
-                                <div class="flex items-center gap-2">
-                                    <input type="radio" name="loadoutWeapon" value="blaster" checked class="accent-cyan-400">
-                                    <span class="text-sm font-bold text-slate-200">Plasma Blaster</span>
-                                </div>
-                                <span class="text-xs text-cyan-400 font-mono">Szybka / Średnie obrażenia</span>
-                            </label>
-                            <label class="flex items-center justify-between p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-cyan-500 transition">
-                                <div class="flex items-center gap-2">
-                                    <input type="radio" name="loadoutWeapon" value="shotgun" class="accent-cyan-400">
-                                    <span class="text-sm font-bold text-slate-200">Neon Shotgun</span>
-                                </div>
-                                <span class="text-xs text-yellow-400 font-mono">Bliski zasięg / Rozrzut</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs text-slate-400">
-                    <p class="font-bold text-slate-300 mb-1"><i class="fa-solid fa-keyboard text-cyan-400"></i> Sterowanie w grze:</p>
-                    <p>• WASD / Strzałki: Poruszanie się</p>
-                    <p>• Myszka: Celowanie</p>
-                    <p>• LPM (Lewy Klik): Strzał</p>
-                    <p>• R: Przeładowanie broni</p>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- SCREEN 3: GAMEPLAY CANVAS AREA -->
-        <div id="screenGame" class="hidden flex-1 relative glass-panel rounded-2xl border border-slate-800 overflow-hidden flex flex-col items-center justify-center">
-            
-            <!-- HUD Overlay -->
-            <div class="absolute top-3 left-3 right-3 flex justify-between items-start pointer-events-none z-20">
-                
-                <!-- Player Health & Weapon Status -->
-                <div class="bg-slate-950/80 backdrop-blur border border-slate-800 p-3 rounded-xl flex items-center gap-4 shadow-xl">
-                    <div>
-                        <div class="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">ŻYCIE (HP)</div>
-                        <div class="w-36 h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
-                            <div id="hudHealthBar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-200" style="width: 100%;"></div>
-                        </div>
-                    </div>
-                    <div class="border-l border-slate-800 pl-4">
-                        <div class="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">AMUNICJA</div>
-                        <div class="text-lg font-black text-cyan-400 font-mono leading-none">
-                            <span id="hudAmmo">12</span> / <span id="hudMaxAmmo" class="text-xs text-slate-500">12</span>
-                        </div>
-                    </div>
-                    <div class="border-l border-slate-800 pl-4">
-                        <div class="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-0.5">BROŃ</div>
-                        <div id="hudWeaponName" class="text-xs font-bold text-pink-400">Blaster</div>
-                    </div>
-                </div>
-
-                <!-- Top Center Timer / Game Mode -->
-                <div class="bg-slate-950/80 backdrop-blur border border-slate-800 px-4 py-2 rounded-xl shadow-xl text-center">
-                    <div id="hudGameMode" class="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">FREE FOR ALL</div>
-                    <div id="hudMatchTimer" class="text-xl font-black text-white font-mono">03:00</div>
-                </div>
-
-                <!-- Scoreboard (Leaderboard Widget) -->
-                <div class="bg-slate-950/80 backdrop-blur border border-slate-800 p-3 rounded-xl shadow-xl w-48">
-                    <div class="text-[10px] uppercase tracking-wider font-bold text-slate-400 border-b border-slate-800 pb-1 mb-1 flex justify-between">
-                        <span>GRACZ</span>
-                        <span>K / D</span>
-                    </div>
-                    <div id="hudScoreboard" class="space-y-1 text-xs">
-                        <!-- Scoreboard rows injected via JS -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Canvas Element -->
-            <canvas id="gameCanvas" class="w-full h-full rounded-2xl"></canvas>
-
-            <!-- Kill Feed Notification Overlay -->
-            <div id="killFeed" class="absolute bottom-4 left-4 space-y-1 text-xs pointer-events-none z-20"></div>
-
-            <!-- Match Over Overlay Screen -->
-            <div id="matchOverModal" class="hidden absolute inset-0 bg-slate-950/90 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center">
-                <h2 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500 mb-2 font-orbitron">KONIEC MECZU!</h2>
-                <p id="winnerAnnouncement" class="text-lg text-slate-300 mb-6">Zwycięzca: <span class="text-cyan-400 font-bold">CyberHunter</span></p>
-
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 w-full max-w-md mb-6">
-                    <h3 class="text-xs font-bold text-slate-400 uppercase mb-3">Tabela Końcowa</h3>
-                    <div id="finalScoreboard" class="space-y-2 text-sm">
-                        <!-- Final scores inserted here -->
-                    </div>
-                </div>
-
-                <button onclick="returnToLobby()" class="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black px-8 py-3 rounded-xl shadow-lg shadow-cyan-500/30 transition transform active:scale-95">
-                    POWRÓT DO LOBBY
-                </button>
-            </div>
-
-        </div>
-
-    </div>
-
-    <!-- JAVASCRIPT LOGIC -->
-    <script>
-        /* ==========================================================================
-           AUDIO SYNTHESIZER (Web Audio API - No external files required)
-           ========================================================================== */
-        class SoundFX {
-            constructor() {
-                this.ctx = null;
-                this.enabled = true;
-            }
-
-            init() {
-                if (!this.ctx) {
-                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                    this.ctx = new AudioCtx();
-                }
-            }
-
-            playShoot() {
-                if (!this.enabled || !this.ctx) return;
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.1);
-                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start();
-                osc.stop(this.ctx.currentTime + 0.1);
-            }
-
-            playHit() {
-                if (!this.enabled || !this.ctx) return;
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.08);
-                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start();
-                osc.stop(this.ctx.currentTime + 0.08);
-            }
-
-            playPickup() {
-                if (!this.enabled || !this.ctx) return;
-                const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.15);
-                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                osc.start();
-                osc.stop(this.ctx.currentTime + 0.15);
-            }
-        }
-
-        const audio = new SoundFX();
-
-        function toggleSound() {
-            audio.enabled = !audio.enabled;
-            const icon = document.getElementById('soundIcon');
-            if (audio.enabled) {
-                icon.className = 'fa-solid fa-volume-high';
-            } else {
-                icon.className = 'fa-solid fa-volume-xmark text-slate-500';
-            }
-        }
-
-        /* ==========================================================================
-           GLOBAL GAME STATE & ROOM MANAGEMENT
-           ========================================================================== */
-        const COLOR_PALETTE = [
-            '#06b6d4', // Cyan
-            '#ec4899', // Pink
-            '#10b981', // Emerald
-            '#f59e0b', // Amber
-            '#8b5cf6', // Purple
-        ];
-
-        let state = {
-            currentScreen: 'mainMenu', // mainMenu, lobbyRoom, game
-            playerName: 'CyberHunter',
-            playerColor: COLOR_PALETTE[0],
-            selectedWeapon: 'blaster',
-            currentRoom: null,
-            isReady: false,
-            rooms: [
-                { id: '101', code: 'CYBR', name: 'CyberArena Alpha', mode: 'FreeForAll', players: 3, maxPlayers: 6, hasBots: true },
-                { id: '102', code: 'NEON', name: 'Neon City Deathmatch', mode: 'FreeForAll', players: 2, maxPlayers: 4, hasBots: true },
-                { id: '103', code: 'TDM1', name: 'Pro Squads TDM', mode: 'TeamDeathmatch', players: 4, maxPlayers: 8, hasBots: true },
-            ]
-        };
-
-        // DOM Elements
-        const screenMainMenu = document.getElementById('screenMainMenu');
-        const screenLobbyRoom = document.getElementById('screenLobbyRoom');
-        const screenGame = document.getElementById('screenGame');
-
-        // Initialization
-        window.onload = () => {
-            renderColorPicker();
-            refreshRooms();
-
-            // Name sync
-            document.getElementById('playerNameInput').addEventListener('input', (e) => {
-                state.playerName = e.target.value.trim() || 'Gracz';
-            });
-
-            // Handle Window Resize for Canvas
-            window.addEventListener('resize', resizeCanvas);
-        };
-
-        function showScreen(screenName) {
-            screenMainMenu.classList.add('hidden');
-            screenLobbyRoom.classList.add('hidden');
-            screenGame.classList.add('hidden');
-
-            if (screenName === 'mainMenu') screenMainMenu.classList.remove('hidden');
-            if (screenName === 'lobbyRoom') screenLobbyRoom.classList.remove('hidden');
-            if (screenName === 'game') screenGame.classList.remove('hidden');
-
-            state.currentScreen = screenName;
-        }
-
-        function renderColorPicker() {
-            const container = document.getElementById('colorPickerContainer');
-            container.innerHTML = '';
-            COLOR_PALETTE.forEach((color, index) => {
-                const btn = document.createElement('button');
-                btn.className = `w-8 h-8 rounded-full border-2 transition-transform transform hover:scale-110 ${state.playerColor === color ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`;
-                btn.style.backgroundColor = color;
-                btn.onclick = () => {
-                    state.playerColor = color;
-                    renderColorPicker();
-                };
-                container.appendChild(btn);
-            });
-        }
-
-        /* ==========================================================================
-           LOBBY & ROOM SYSTEM LOGIC
-           ========================================================================== */
-        function refreshRooms() {
-            const listEl = document.getElementById('roomList');
-            listEl.innerHTML = '';
-
-            state.rooms.forEach(room => {
-                const item = document.createElement('div');
-                item.className = "grid grid-cols-12 gap-2 items-center p-3 bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 rounded-xl transition text-sm";
-                item.innerHTML = `
-                    <div class="col-span-5 font-bold text-slate-200 flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full ${room.players < room.maxPlayers ? 'bg-emerald-400' : 'bg-rose-500'}"></span>
-                        ${room.name}
-                        <span class="text-[10px] text-slate-500 font-mono">#${room.code}</span>
-                    </div>
-                    <div class="col-span-3 text-center text-xs text-cyan-400 font-semibold">${room.mode}</div>
-                    <div class="col-span-2 text-center font-mono text-xs text-slate-300">${room.players}/${room.maxPlayers}</div>
-                    <div class="col-span-2 text-right">
-                        <button onclick="joinRoom('${room.id}')" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs rounded-lg transition">
-                            Dołącz
-                        </button>
-                    </div>
-                `;
-                listEl.appendChild(item);
-            });
-        }
-
-        function createNewRoom() {
-            const name = document.getElementById('newRoomName').value || 'Nowy Pokój';
-            const mode = document.getElementById('newRoomMode').value;
-            const maxPlayers = parseInt(document.getElementById('newRoomMaxPlayers').value);
-            const hasBots = document.getElementById('newRoomBots').value === 'true';
-
-            const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-
-            const newRoom = {
-                id: Date.now().toString(),
-                code: roomCode,
-                name: name,
-                mode: mode,
-                players: 1,
-                maxPlayers: maxPlayers,
-                hasBots: hasBots,
-                playerList: [
-                    { id: 'player_me', name: state.playerName, isReady: false, color: state.playerColor, isBot: false }
-                ]
-            };
-
-            // Populate with AI bots if enabled
-            if (hasBots) {
-                const botNames = ['Viper_AI', 'CyberN4ut', 'NexusBot', 'Glitch99', 'ShadowEx', 'NeonGhost'];
-                for (let i = 1; i < maxPlayers; i++) {
-                    newRoom.playerList.push({
-                        id: 'bot_' + i,
-                        name: botNames[i - 1] || `Bot_${i}`,
-                        isReady: true,
-                        color: COLOR_PALETTE[i % COLOR_PALETTE.length],
-                        isBot: true
-                    });
-                }
-                newRoom.players = maxPlayers;
-            }
-
-            state.rooms.push(newRoom);
-            enterLobbyRoom(newRoom);
-        }
-
-        function joinRoom(roomId) {
-            const room = state.rooms.find(r => r.id === roomId);
-            if (!room) return;
-
-            // Ensure player is added if not full
-            if (!room.playerList.some(p => p.id === 'player_me')) {
-                room.playerList.push({
-                    id: 'player_me',
-                    name: state.playerName,
-                    isReady: false,
-                    color: state.playerColor,
-                    isBot: false
-                });
-            }
-            enterLobbyRoom(room);
-        }
-
-        function joinByCode() {
-            const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
-            const room = state.rooms.find(r => r.code === code);
-            if (room) {
-                joinRoom(room.id);
-            } else {
-                alert('Nie znaleziono pokoju o podanym kodzie!');
-            }
-        }
-
-        function quickPlay() {
-            if (state.rooms.length > 0) {
-                joinRoom(state.rooms[0].id);
-            } else {
-                createNewRoom();
-            }
-        }
-
-        function enterLobbyRoom(room) {
-            state.currentRoom = room;
-            state.isReady = false;
-
-            document.getElementById('lobbyTitle').innerText = room.name;
-            document.getElementById('lobbyCodeBadge').innerText = `#${room.code}`;
-            document.getElementById('lobbySubtitle').innerText = `Tryb: ${room.mode} • Wypełnienie botami: ${room.hasBots ? 'TAK' : 'NIE'}`;
-
-            updateLobbyPlayerUI();
-            showScreen('lobbyRoom');
-        }
-
-        function leaveLobby() {
-            state.currentRoom = null;
-            showScreen('mainMenu');
-            refreshRooms();
-        }
-
-        function toggleReady() {
-            audio.init(); // Initialize Web Audio API context on user click
-            state.isReady = !state.isReady;
-
-            const me = state.currentRoom.playerList.find(p => p.id === 'player_me');
-            if (me) me.isReady = state.isReady;
-
-            const readyBtn = document.getElementById('readyBtn');
-            if (state.isReady) {
-                readyBtn.className = "bg-amber-600 hover:bg-amber-500 text-white font-black px-8 py-3 rounded-xl shadow-lg shadow-amber-950 transition transform active:scale-95 flex items-center gap-2";
-                readyBtn.innerHTML = `<i class="fa-solid fa-xmark"></i> ANULUJ GOTOWOŚĆ`;
-            } else {
-                readyBtn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-black px-8 py-3 rounded-xl shadow-lg shadow-emerald-950 transition transform active:scale-95 flex items-center gap-2";
-                readyBtn.innerHTML = `<i class="fa-solid fa-check"></i> JESTEM GOTÓW!`;
-            }
-
-            updateLobbyPlayerUI();
-            checkAllReady();
-        }
-
-        function updateLobbyPlayerUI() {
-            if (!state.currentRoom) return;
-
-            const me = state.currentRoom.playerList.find(p => p.id === 'player_me');
-            if (me) {
-                me.name = state.playerName;
-                me.color = state.playerColor;
-            }
-
-            const listEl = document.getElementById('lobbyPlayerList');
-            listEl.innerHTML = '';
-
-            state.currentRoom.playerList.forEach(p => {
-                const card = document.createElement('div');
-                card.className = "bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between";
-                card.innerHTML = `
-                    <div class="flex items-center gap-2.5">
-                        <div class="w-4 h-4 rounded-full border border-white/50" style="background-color: ${p.color}"></div>
-                        <div>
-                            <div class="text-sm font-bold text-slate-200">${p.name} ${p.id === 'player_me' ? '<span class="text-[10px] text-cyan-400 font-normal">(Ty)</span>' : ''}</div>
-                            <div class="text-[10px] text-slate-500">${p.isBot ? 'SI Bot AI' : 'Gracz'}</div>
-                        </div>
-                    </div>
-                    <div>
-                        ${p.isReady 
-                            ? '<span class="text-[10px] bg-emerald-950 border border-emerald-600 text-emerald-400 font-bold px-2 py-0.5 rounded">GOTÓW</span>' 
-                            : '<span class="text-[10px] bg-slate-800 border border-slate-700 text-slate-400 font-bold px-2 py-0.5 rounded">CZEKA</span>'}
-                    </div>
-                `;
-                listEl.appendChild(card);
-            });
-
-            document.getElementById('lobbyPlayerCount').innerText = `${state.currentRoom.playerList.length}/${state.currentRoom.maxPlayers}`;
-        }
-
-        function checkAllReady() {
-            const allReady = state.currentRoom.playerList.every(p => p.isReady);
-            if (allReady) {
-                setTimeout(() => {
-                    startGameMatch();
-                }, 800);
-            }
-        }
-
-        /* ==========================================================================
-           2D SHOOTER GAME ENGINE (CANVAS)
-           ========================================================================== */
-        let canvas, ctx;
-        let gameActive = false;
-        let gameLoopId = null;
-        let matchTimerInterval = null;
-        let matchTimeRemaining = 180; // 3 minutes match
-
-        // Input Tracking
-        const keys = { w: false, a: false, s: false, d: false, r: false };
-        const mouse = { x: 0, y: 0, isDown: false };
-
-        // Game Entities
-        let localPlayer = null;
-        let players = [];
-        let bullets = [];
-        let particles = [];
-        let pickups = [];
-        let mapObstacles = [];
-
-        // Weapon Configuration Data
-        const WEAPONS = {
-            blaster: { name: 'Plasma Blaster', damage: 22, fireRate: 180, speed: 12, ammo: 12, reloadTime: 1200, spread: 0.05, count: 1, color: '#06b6d4' },
-            shotgun: { name: 'Neon Shotgun', damage: 14, fireRate: 650, speed: 10, ammo: 6, reloadTime: 1800, spread: 0.25, count: 5, color: '#f59e0b' },
-            rifle: { name: 'Pulse Rifle', damage: 18, fireRate: 100, speed: 15, ammo: 25, reloadTime: 1500, spread: 0.08, count: 1, color: '#ec4899' }
-        };
-
-        function resizeCanvas() {
-            if (!canvas) return;
-            const container = canvas.parentElement;
-            canvas.width = container.clientWidth;
-            canvas.height = container.clientHeight;
-        }
-
-        function startGameMatch() {
-            showScreen('game');
-            canvas = document.getElementById('gameCanvas');
-            ctx = canvas.getContext('2d');
-            resizeCanvas();
-
-            // Bind Control Listeners
-            window.addEventListener('keydown', e => {
-                if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') keys.w = true;
-                if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') keys.a = true;
-                if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') keys.s = true;
-                if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') keys.d = true;
-                if (e.key === 'r' || e.key === 'R') reloadWeapon();
-            });
-
-            window.addEventListener('keyup', e => {
-                if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') keys.w = false;
-                if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') keys.a = false;
-                if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') keys.s = false;
-                if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') keys.d = false;
-            });
-
-            canvas.addEventListener('mousemove', e => {
-                const rect = canvas.getBoundingClientRect();
-                mouse.x = e.clientX - rect.left;
-                mouse.y = e.clientY - rect.top;
-            });
-
-            canvas.addEventListener('mousedown', e => {
-                if (e.button === 0) mouse.isDown = true;
-            });
-
-            window.addEventListener('mouseup', () => {
-                mouse.isDown = false;
-            });
-
-            // Build Map Obstacles
-            buildMap();
-
-            // Spawn Players
-            spawnAllPlayers();
-
-            // Match Timer Setup
-            matchTimeRemaining = 180;
-            if (matchTimerInterval) clearInterval(matchTimerInterval);
-            matchTimerInterval = setInterval(() => {
-                matchTimeRemaining--;
-                const mins = Math.floor(matchTimeRemaining / 60).toString().padStart(2, '0');
-                const secs = (matchTimeRemaining % 60).toString().padStart(2, '0');
-                document.getElementById('hudMatchTimer').innerText = `${mins}:${secs}`;
-
-                if (matchTimeRemaining <= 0) {
-                    endMatch();
-                }
-            }, 1000);
-
-            // Spawn random weapon pickups periodically
-            setInterval(spawnWeaponPickup, 12000);
-
-            gameActive = true;
-            document.getElementById('matchOverModal').classList.add('hidden');
-            requestAnimationFrame(gameLoop);
-        }
-
-        function buildMap() {
-            mapObstacles = [
-                // Center Pillar
-                { x: canvas.width / 2 - 50, y: canvas.height / 2 - 50, w: 100, h: 100 },
-                // Corner Shields
-                { x: 150, y: 150, w: 120, h: 20 },
-                { x: 150, y: 150, w: 20, h: 120 },
-
-                { x: canvas.width - 270, y: 150, w: 120, h: 20 },
-                { x: canvas.width - 170, y: 150, w: 20, h: 120 },
-
-                { x: 150, y: canvas.height - 170, w: 120, h: 20 },
-                { x: 150, y: canvas.height - 270, w: 20, h: 120 },
-
-                { x: canvas.width - 270, y: canvas.height - 170, w: 120, h: 20 },
-                { x: canvas.width - 170, y: canvas.height - 270, w: 20, h: 120 }
-            ];
-        }
-
-        /* Entity Classes */
-        class Player {
-            constructor(id, name, color, isBot = false) {
-                this.id = id;
-                this.name = name;
-                this.color = color;
-                this.isBot = isBot;
-
-                this.radius = 18;
-                this.x = Math.random() * (canvas.width - 100) + 50;
-                this.y = Math.random() * (canvas.height - 100) + 50;
-                this.speed = 3.5;
-
-                this.hp = 100;
-                this.maxHp = 100;
-                this.kills = 0;
-                this.deaths = 0;
-
-                this.weaponKey = state.selectedWeapon || 'blaster';
-                this.weapon = { ...WEAPONS[this.weaponKey] };
-                this.currentAmmo = this.weapon.ammo;
-                this.isReloading = false;
-                this.lastShotTime = 0;
-                this.angle = 0;
-
-                // AI Bot logic variables
-                this.botTarget = null;
-                this.botMoveAngle = Math.random() * Math.PI * 2;
-                this.botChangeDirTime = 0;
-            }
-
-            respawn() {
-                this.hp = 100;
-                this.x = Math.random() * (canvas.width - 120) + 60;
-                this.y = Math.random() * (canvas.height - 120) + 60;
-                this.currentAmmo = this.weapon.ammo;
-                this.isReloading = false;
-            }
-
-            update() {
-                if (this.hp <= 0) return;
-
-                if (!this.isBot) {
-                    // Local Human Movement
-                    let dx = 0;
-                    let dy = 0;
-                    if (keys.w) dy -= 1;
-                    if (keys.s) dy += 1;
-                    if (keys.a) dx -= 1;
-                    if (keys.d) dx += 1;
-
-                    if (dx !== 0 && dy !== 0) {
-                        dx *= 0.7071;
-                        dy *= 0.7071;
-                    }
-
-                    this.move(dx * this.speed, dy * this.speed);
-
-                    // Angle towards crosshair
-                    this.angle = Math.atan2(mouse.y - this.y, mouse.x - this.x);
-
-                    // Shooting
-                    if (mouse.isDown) {
-                        this.shoot();
-                    }
-                } else {
-                    // AI Bot Movement & Logic
-                    this.updateBot();
-                }
-            }
-
-            move(dx, dy) {
-                let nextX = this.x + dx;
-                let nextY = this.y + dy;
-
-                // Wall Collision Check (Map Boundaries)
-                nextX = Math.max(this.radius, Math.min(canvas.width - this.radius, nextX));
-                nextY = Math.max(this.radius, Math.min(canvas.height - this.radius, nextY));
-
-                // Obstacle Collisions
-                for (let obs of mapObstacles) {
-                    if (nextX + this.radius > obs.x && nextX - this.radius < obs.x + obs.w &&
-                        nextY + this.radius > obs.y && nextY - this.radius < obs.y + obs.h) {
-                        // Simple bounce back collision response
-                        return;
-                    }
-                }
-
-                this.x = nextX;
-                this.y = nextY;
-            }
-
-            updateBot() {
-                const now = Date.now();
-
-                // Find closest target
-                let closest = null;
-                let minDist = 99999;
-                players.forEach(p => {
-                    if (p !== this && p.hp > 0) {
-                        let dist = Math.hypot(p.x - this.x, p.y - this.y);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            closest = p;
-                        }
-                    }
-                });
-
-                if (closest && minDist < 450) {
-                    // Aim at enemy
-                    this.angle = Math.atan2(closest.y - this.y, closest.x - this.x);
-
-                    // Move closer if far, or strafe
-                    if (minDist > 150) {
-                        this.move(Math.cos(this.angle) * this.speed * 0.8, Math.sin(this.angle) * this.speed * 0.8);
-                    }
-
-                    // Shoot at target
-                    if (Math.random() < 0.6) {
-                        this.shoot();
-                    }
-                } else {
-                    // Wandering AI
-                    if (now > this.botChangeDirTime) {
-                        this.botMoveAngle = Math.random() * Math.PI * 2;
-                        this.botChangeDirTime = now + Math.floor(Math.random() * 2000) + 1000;
-                    }
-                    this.angle = this.botMoveAngle;
-                    this.move(Math.cos(this.botMoveAngle) * this.speed * 0.5, Math.sin(this.botMoveAngle) * this.speed * 0.5);
-                }
-            }
-
-            shoot() {
-                const now = Date.now();
-                if (this.isReloading || now - this.lastShotTime < this.weapon.fireRate) return;
-
-                if (this.currentAmmo <= 0) {
-                    this.reload();
-                    return;
-                }
-
-                this.lastShotTime = now;
-                this.currentAmmo--;
-
-                audio.playShoot();
-
-                // Spawn Bullets according to weapon count/spread
-                for (let i = 0; i < this.weapon.count; i++) {
-                    const spreadAngle = (Math.random() - 0.5) * this.weapon.spread;
-                    const finalAngle = this.angle + spreadAngle;
-
-                    bullets.push(new Bullet(
-                        this.x + Math.cos(this.angle) * (this.radius + 5),
-                        this.y + Math.sin(this.angle) * (this.radius + 5),
-                        finalAngle,
-                        this.weapon.speed,
-                        this.weapon.damage,
-                        this.weapon.color,
-                        this.id
-                    ));
-                }
-
-                // Recoil effect particle
-                particles.push(new Particle(
-                    this.x + Math.cos(this.angle) * this.radius,
-                    this.y + Math.sin(this.angle) * this.radius,
-                    this.weapon.color,
-                    3,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
-                ));
-            }
-
-            reload() {
-                if (this.isReloading) return;
-                this.isReloading = true;
-                setTimeout(() => {
-                    this.currentAmmo = this.weapon.ammo;
-                    this.isReloading = false;
-                }, this.weapon.reloadTime);
-            }
-
-            draw() {
-                if (this.hp <= 0) return;
-
-                ctx.save();
-                ctx.translate(this.x, this.y);
-
-                // Draw Health Bar above player
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
-                ctx.fillRect(-20, -this.radius - 16, 40, 6);
-                ctx.fillStyle = this.hp > 50 ? '#10b981' : (this.hp > 25 ? '#f59e0b' : '#f43f5e');
-                ctx.fillRect(-20, -this.radius - 16, (this.hp / this.maxHp) * 40, 6);
-
-                // Draw Name
-                ctx.fillStyle = '#cbd5e1';
-                ctx.font = '10px Orbitron';
-                ctx.textAlign = 'center';
-                ctx.fillText(this.name, 0, -this.radius - 20);
-
-                // Rotate for weapon and body orientation
-                ctx.rotate(this.angle);
-
-                // Gun Barrel
-                ctx.fillStyle = '#475569';
-                ctx.fillRect(0, -3, this.radius + 10, 6);
-
-                // Player Body (Glowing Circle)
-                ctx.beginPath();
-                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = this.color;
-                ctx.shadowColor = this.color;
-                ctx.shadowBlur = 12;
-                ctx.fill();
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = '#ffffff';
-                ctx.stroke();
-
-                ctx.restore();
-            }
-        }
-
-        class Bullet {
-            constructor(x, y, angle, speed, damage, color, ownerId) {
-                this.x = x;
-                this.y = y;
-                this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
-                this.damage = damage;
-                this.color = color;
-                this.ownerId = ownerId;
-                this.radius = 3;
-                this.alive = true;
-            }
-
-            update() {
-                this.x += this.vx;
-                this.y += this.vy;
-
-                // Out of Bounds check
-                if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
-                    this.alive = false;
-                }
-
-                // Obstacle Hit Test
-                for (let obs of mapObstacles) {
-                    if (this.x > obs.x && this.x < obs.x + obs.w && this.y > obs.y && this.y < obs.y + obs.h) {
-                        this.alive = false;
-                        createImpactParticles(this.x, this.y, this.color);
-                    }
-                }
-
-                // Player Hit Test
-                players.forEach(p => {
-                    if (p.id !== this.ownerId && p.hp > 0 && this.alive) {
-                        let dist = Math.hypot(p.x - this.x, p.y - this.y);
-                        if (dist < p.radius + this.radius) {
-                            p.hp -= this.damage;
-                            this.alive = false;
-                            audio.playHit();
-                            createImpactParticles(this.x, this.y, '#f43f5e');
-
-                            // Check Kill
-                            if (p.hp <= 0) {
-                                p.deaths++;
-                                const killer = players.find(k => k.id === this.ownerId);
-                                if (killer) killer.kills++;
-
-                                showKillFeed(killer ? killer.name : 'Nieznany', p.name);
-
-                                // Auto Respawn after 3s
-                                setTimeout(() => p.respawn(), 3000);
-                            }
-                        }
-                    }
-                });
-            }
-
-            draw() {
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = this.color;
-                ctx.shadowColor = this.color;
-                ctx.shadowBlur = 8;
-                ctx.fill();
-                ctx.restore();
-            }
-        }
-
-        class Particle {
-            constructor(x, y, color, size, vx, vy) {
-                this.x = x;
-                this.y = y;
-                this.color = color;
-                this.size = size;
-                this.vx = vx;
-                this.vy = vy;
-                this.life = 1.0;
-            }
-
-            update() {
-                this.x += this.vx;
-                this.y += this.vy;
-                this.life -= 0.04;
-            }
-
-            draw() {
-                ctx.save();
-                ctx.globalAlpha = Math.max(0, this.life);
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x, this.y, this.size, this.size);
-                ctx.restore();
-            }
-        }
-
-        class WeaponPickup {
-            constructor(x, y, type) {
-                this.x = x;
-                this.y = y;
-                this.type = type; // shotgun / rifle
-                this.radius = 12;
-                this.alive = true;
-            }
-
-            draw() {
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = WEAPONS[this.type].color;
-                ctx.shadowColor = WEAPONS[this.type].color;
-                ctx.shadowBlur = 10;
-                ctx.fill();
-
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '9px Orbitron';
-                ctx.textAlign = 'center';
-                ctx.fillText(this.type.toUpperCase(), this.x, this.y - 16);
-                ctx.restore();
-            }
-        }
-
-        function createImpactParticles(x, y, color) {
-            for (let i = 0; i < 6; i++) {
-                particles.push(new Particle(
-                    x, y, color,
-                    Math.random() * 3 + 1,
-                    (Math.random() - 0.5) * 4,
-                    (Math.random() - 0.5) * 4
-                ));
-            }
-        }
-
-        function spawnWeaponPickup() {
-            if (!gameActive) return;
-            const types = ['shotgun', 'rifle'];
-            const type = types[Math.floor(Math.random() * types.length)];
-            pickups.push(new WeaponPickup(
-                Math.random() * (canvas.width - 200) + 100,
-                Math.random() * (canvas.height - 200) + 100,
-                type
-            ));
-        }
-
-        function reloadWeapon() {
-            if (localPlayer) localPlayer.reload();
-        }
-
-        function spawnAllPlayers() {
-            players = [];
-            const roomList = state.currentRoom ? state.currentRoom.playerList : [];
-
-            roomList.forEach(p => {
-                const pl = new Player(p.id, p.name, p.color, p.isBot);
-                players.push(pl);
-                if (p.id === 'player_me') localPlayer = pl;
-            });
-
-            // Fallback if local player was not generated
-            if (!localPlayer) {
-                localPlayer = new Player('player_me', state.playerName, state.playerColor, false);
-                players.push(localPlayer);
-            }
-        }
-
-        function showKillFeed(killer, victim) {
-            const feed = document.getElementById('killFeed');
-            const entry = document.createElement('div');
-            entry.className = "bg-slate-900/90 border border-slate-700 px-3 py-1 rounded shadow text-slate-200 animate-pulse";
-            entry.innerHTML = `<span class="text-cyan-400 font-bold">${killer}</span> <i class="fa-solid fa-crosshairs text-rose-500 mx-1"></i> <span class="text-pink-400 font-bold">${victim}</span>`;
-            feed.appendChild(entry);
-
-            setTimeout(() => {
-                if (entry.parentElement) entry.parentElement.removeChild(entry);
-            }, 4000);
-        }
-
-        /* Update HUD UI elements */
-        function updateHUD() {
-            if (!localPlayer) return;
-
-            // Health Bar
-            const hpPercent = Math.max(0, (localPlayer.hp / localPlayer.maxHp) * 100);
-            document.getElementById('hudHealthBar').style.width = `${hpPercent}%`;
-
-            // Ammo & Weapon
-            document.getElementById('hudAmmo').innerText = localPlayer.isReloading ? 'RELOAD' : localPlayer.currentAmmo;
-            document.getElementById('hudMaxAmmo').innerText = localPlayer.weapon.ammo;
-            document.getElementById('hudWeaponName').innerText = localPlayer.weapon.name;
-
-            // Scoreboard Leaderboard Widget
-            const scoreboardEl = document.getElementById('hudScoreboard');
-            scoreboardEl.innerHTML = '';
-
-            const sorted = [...players].sort((a, b) => b.kills - a.kills);
-            sorted.slice(0, 4).forEach(p => {
-                const row = document.createElement('div');
-                row.className = `flex justify-between items-center ${p.id === localPlayer.id ? 'text-cyan-300 font-bold' : 'text-slate-400'}`;
-                row.innerHTML = `
-                    <span class="truncate w-24">${p.name}</span>
-                    <span class="font-mono">${p.kills}/${p.deaths}</span>
-                `;
-                scoreboardEl.appendChild(row);
-            });
-        }
-
-        /* Core Game Loop */
-        function gameLoop() {
-            if (!gameActive) return;
-
-            // Clear Canvas Background
-            ctx.fillStyle = '#090d16';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Render Arena Grid Lines
-            ctx.strokeStyle = 'rgba(30, 41, 59, 0.3)';
-            ctx.lineWidth = 1;
-            const gridSize = 40;
-            for (let x = 0; x < canvas.width; x += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, canvas.height);
-                ctx.stroke();
-            }
-            for (let y = 0; y < canvas.height; y += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
-                ctx.stroke();
-            }
-
-            // Draw Obstacles
-            ctx.fillStyle = '#1e293b';
-            ctx.strokeStyle = '#06b6d4';
-            ctx.lineWidth = 2;
-            mapObstacles.forEach(obs => {
-                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-                ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
-            });
-
-            // Update & Render Pickups
-            pickups.forEach((pickup, idx) => {
-                pickup.draw();
-
-                // Collision with players
-                players.forEach(p => {
-                    if (p.hp > 0 && Math.hypot(p.x - pickup.x, p.y - pickup.y) < p.radius + pickup.radius) {
-                        p.weaponKey = pickup.type;
-                        p.weapon = { ...WEAPONS[pickup.type] };
-                        p.currentAmmo = p.weapon.ammo;
-                        audio.playPickup();
-                        pickups.splice(idx, 1);
-                    }
-                });
-            });
-
-            // Update & Render Bullets
-            bullets.forEach((b, idx) => {
-                b.update();
-                b.draw();
-                if (!b.alive) bullets.splice(idx, 1);
-            });
-
-            // Update & Render Particles
-            particles.forEach((pt, idx) => {
-                pt.update();
-                pt.draw();
-                if (pt.life <= 0) particles.splice(idx, 1);
-            });
-
-            // Update & Render Players
-            players.forEach(p => {
-                p.update();
-                p.draw();
-            });
-
-            // Update HUD Overlay
-            updateHUD();
-
-            requestAnimationFrame(gameLoop);
-        }
-
-        function endMatch() {
-            gameActive = false;
-            if (matchTimerInterval) clearInterval(matchTimerInterval);
-
-            const sorted = [...players].sort((a, b) => b.kills - a.kills);
-            const winner = sorted[0];
-
-            document.getElementById('winnerAnnouncement').innerHTML = `Zwycięzca: <span class="text-cyan-400 font-bold">${winner ? winner.name : 'Nikt'}</span> (${winner ? winner.kills : 0} Zabójstw)`;
-
-            const finalBoard = document.getElementById('finalScoreboard');
-            finalBoard.innerHTML = '';
-            sorted.forEach((p, idx) => {
-                const row = document.createElement('div');
-                row.className = "flex justify-between items-center p-2 rounded bg-slate-800/60";
-                row.innerHTML = `
-                    <span class="font-bold text-slate-200">#${idx + 1} ${p.name}</span>
-                    <span class="font-mono text-cyan-400">${p.kills} Zabójstw / ${p.deaths} Zgonów</span>
-                `;
-                finalBoard.appendChild(row);
-            });
-
-            document.getElementById('matchOverModal').classList.remove('hidden');
-        }
-
-        function returnToLobby() {
-            document.getElementById('matchOverModal').classList.add('hidden');
-            showScreen('lobbyRoom');
-        }
-    </script>
-</body>
-</html>
+<body>
+
+<div id="game-container">
+    <!-- EKRAN GŁÓWNY MENU -->
+    <div id="menu-screen" class="screen">
+        <h1>NEON ARENA P2P</h1>
+        <div class="card">
+            <input type="text" id="player-name
