@@ -1,94 +1,24 @@
+import { initializeApp } from
+"https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
 
-const socket = io();
+import {
+  getDatabase,
+  ref,
+  set,
+  get,
+  onValue
+} from
+"https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
-let currentCode = null;
-let isHost = false;
+const firebaseConfig = {
+  apiKey: "TWÓJ_API_KEY",
+  authDomain: "pandixif-multiplayer.firebaseapp.com",
+  databaseURL: "https://pandixif-multiplayer-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "pandixif-multiplayer",
+  storageBucket: "pandixif-multiplayer.firebasestorage.app",
+  messagingSenderId: "226124925060",
+  appId: "1:226124925060:web:c414a82236e554deb7dad1"
+};
 
-function getNick() {
-    return document.getElementById("nick").value.trim() || "Gracz";
-}
-
-function createRoom() {
-    socket.emit("createRoom", getNick());
-}
-
-function joinRoom() {
-    const code = document.getElementById("roomCode").value.trim();
-
-    if (!code) {
-        showMessage("Wpisz kod pokoju!");
-        return;
-    }
-
-    socket.emit("joinRoom", {
-        code,
-        nick: getNick()
-    });
-}
-
-socket.on("roomCreated", code => {
-    currentCode = code;
-    showLobby();
-});
-
-socket.on("joinedRoom", code => {
-    currentCode = code;
-    showLobby();
-});
-
-socket.on("roomUpdate", data => {
-    currentCode = data.code;
-    isHost = data.host === socket.id;
-
-    document.getElementById("code").textContent = data.code;
-
-    const list = document.getElementById("players");
-    list.innerHTML = "";
-
-    data.players.forEach(player => {
-        const li = document.createElement("li");
-
-        li.textContent = player.nick +
-            (player.id === data.host ? " 👑 HOST" : "");
-
-        list.appendChild(li);
-    });
-
-    document.getElementById("startButton").style.display =
-        isHost && !data.started ? "block" : "none";
-
-    document.getElementById("status").textContent =
-        `${data.players.length}/8 graczy w pokoju`;
-});
-
-function showLobby() {
-    document.getElementById("menu").style.display = "none";
-    document.getElementById("lobby").style.display = "block";
-    document.getElementById("message").textContent = "";
-}
-
-function startGame() {
-    if (isHost) {
-        socket.emit("startGame");
-    }
-}
-
-socket.on("gameStarted", () => {
-    document.getElementById("lobby").style.display = "none";
-    document.getElementById("game").style.display = "block";
-});
-
-function copyCode() {
-    if (currentCode) {
-        navigator.clipboard.writeText(currentCode);
-        showMessage("Skopiowano kod pokoju!");
-    }
-}
-
-function showMessage(message) {
-    document.getElementById("message").textContent = message;
-}
-
-socket.on("errorMessage", message => {
-    showMessage(message);
-});
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
