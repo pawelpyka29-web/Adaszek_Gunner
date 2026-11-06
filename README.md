@@ -1,1 +1,0 @@
-# Adaszek_Gunner
