@@ -1,0 +1,59 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+
+    <h1>🎮 MULTIPLAYER</h1>
+
+    <div id="menu">
+        <input id="nick" placeholder="Twój nick" maxlength="20">
+
+        <button onclick="createRoom()">Utwórz pokój</button>
+
+        <div class="separator">LUB</div>
+
+        <input id="roomCode" placeholder="Kod pokoju" maxlength="5">
+
+        <button onclick="joinRoom()">Dołącz do pokoju</button>
+    </div>
+
+    <div id="lobby" style="display:none">
+
+        <h2>Pokój: <span id="code"></span></h2>
+
+        <button onclick="copyCode()">📋 Kopiuj kod</button>
+
+        <h3>Gracze:</h3>
+
+        <ul id="players"></ul>
+
+        <p id="status">Oczekiwanie na graczy...</p>
+
+        <button id="startButton" onclick="startGame()" style="display:none">
+            ROZPOCZNIJ GRĘ
+        </button>
+
+    </div>
+
+    <div id="game" style="display:none">
+        <h2>🎮 Gra rozpoczęta!</h2>
+        <p>W tym miejscu dodamy właściwą grę.</p>
+    </div>
+
+    <p id="message"></p>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
