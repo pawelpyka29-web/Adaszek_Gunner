@@ -75,13 +75,12 @@ block(0, 3, 20, 40, 6, 1, wallMat);
 block(-20, 3, 0, 1, 6, 40, wallMat);
 block(20, 3, 0, 1, 6, 40, wallMat);
 
-// Filarowe przeszkody i murki wewnątrz zamku (zastąpiły stary labirynt)
+// Filarowe przeszkody wewnątrz zamku
 [
   [-10, -10, 4, 4], [10, -10, 4, 4], [-10, 10, 4, 4], [10, 10, 4, 4],
   [0, -10, 8, 2], [0, 10, 8, 2], [-10, 0, 2, 8], [10, 0, 2, 8]
 ].forEach(([x, z, w, d]) => block(x, 2, z, w, 4, d, stoneMat));
 
-// Punkty losowego respawnu na arenie zamkowej
 const spawnPoints = [
   { x: -15, z: -15 }, { x: 15, z: -15 },
   { x: -15, z: 15 }, { x: 15, z: 15 },
@@ -93,9 +92,42 @@ function getRandomSpawn() {
   return { x: sp.x, z: sp.z };
 }
 
+// --- TWORZENIE BARDZIEJ SZCZEGÓŁOWEGO MODELU GRACZA ---
+function createPlayerModel() {
+  const group = new THREE.Group();
+  
+  // Tułów
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 0.4), mat(0x2196f3));
+  torso.position.y = 0.5;
+  torso.castShadow = true;
+  group.add(torso);
+
+  // Głowa
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), mat(0xffccbc));
+  head.position.y = 1.2;
+  head.castShadow = true;
+  group.add(head);
+
+  // Broń trzymana przez postać
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.8), mat(0x222222));
+  gun.position.set(0.3, 0.4, -0.4);
+  group.add(gun);
+
+  return group;
+}
+
+// --- WIDOCZNA BROŃ FPS DLA CIEBIE ---
+const weaponGroup = new THREE.Group();
+const weaponMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.6), mat(0x333333));
+weaponMesh.position.set(0.3, -0.3, -0.5);
+weaponGroup.add(weaponMesh);
+camera.add(weaponGroup);
+scene.add(camera);
+
 // --- ZARZĄDZANIE POKOJAMI I FIREBASE ---
 const otherPlayers = {};
-const otherMat = mat(0xff5722);
+let score = 0;
+let playerLives = 3;
 
 onValue(connectedRef, (snap) => {
   const statusEl = document.getElementById('net-status');
@@ -128,7 +160,8 @@ function joinRoom(roomName) {
   const spawn = getRandomSpawn();
   player.x = spawn.x;
   player.z = spawn.z;
-  player.lives = 3;
+  playerLives = 3;
+  score = 0;
 
   onDisconnect(myRef).remove();
   set(myRef, { x: player.x, y: 0.8, z: player.z, yaw: 0, lives: 3, score: 0 });
@@ -142,12 +175,11 @@ function joinRoom(roomName) {
       if (id === myId) continue;
       const pData = data[id];
       if (!otherPlayers[id]) {
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), otherMat);
-        mesh.castShadow = true;
-        scene.add(mesh);
-        otherPlayers[id] = mesh;
+        const playerModel = createPlayerModel();
+        scene.add(playerModel);
+        otherPlayers[id] = playerModel;
       }
-      otherPlayers[id].position.set(pData.x, pData.y, pData.z);
+      otherPlayers[id].position.set(pData.x, pData.y - 0.4, pData.z);
       otherPlayers[id].rotation.y = pData.yaw || 0;
     }
 
@@ -159,22 +191,25 @@ function joinRoom(roomName) {
     }
   });
 
+  // Obsługa pocisków i trafień
   unsubBullets = onValue(bulletsRef, (snapshot) => {
     const data = snapshot.val() || {};
     for (const bId in data) {
       const b = data[bId];
+      // Jeśli to pocisk innego gracza i leci blisko Ciebie
       if (b.shooter !== myId) {
         const dist = Math.hypot(player.x - b.x, player.z - b.z);
-        if (dist < 1.0 && player.lives > 0) {
-          player.lives--;
-          document.getElementById('lives').textContent = player.lives;
+        if (dist < 1.2 && playerLives > 0) {
+          playerLives--;
+          document.getElementById('lives').textContent = playerLives;
+          
           const sp = getRandomSpawn();
           player.x = sp.x;
           player.z = sp.z;
           
-          update(myRef, { lives: player.lives, x: player.x, z: player.z });
+          update(myRef, { lives: playerLives, x: player.x, z: player.z });
 
-          if (player.lives <= 0) {
+          if (playerLives <= 0) {
             endGame('💀 Zostałeś pokonany na zamku!');
           }
         }
@@ -184,8 +219,8 @@ function joinRoom(roomName) {
 }
 
 // --- STEROWANIE I GRA ---
-let score = 0, isPlaying = false;
-const player = { x: 0, y: 1.6, z: 0, vy: 0, yaw: 0, pitch: 0, onGround: true, lives: 3 };
+let isPlaying = false;
+const player = { x: 0, y: 1.6, z: 0, vy: 0, yaw: 0, pitch: 0, onGround: true };
 const keys = {};
 
 addEventListener('keydown', e => keys[e.code] = true);
@@ -201,9 +236,8 @@ startBtn.onclick = () => {
   if (!roomName) { alert('Wpisz nazwę pokoju!'); return; }
   
   joinRoom(roomName);
-  score = 0;
   document.getElementById('score').textContent = score;
-  document.getElementById('lives').textContent = player.lives;
+  document.getElementById('lives').textContent = playerLives;
   msgEl.textContent = '';
   renderer.domElement.requestPointerLock();
 };
@@ -219,10 +253,11 @@ document.addEventListener('mousemove', e => {
   player.pitch = Math.max(-1.4, Math.min(1.4, player.pitch - e.movementY * 0.0022));
 });
 
-// Strzelanie na kliknięcie myszy
+// STRZELANIE PO KLIKNIĘCIU
 document.addEventListener('mousedown', () => {
   if (!isPlaying || !bulletsRef) return;
   
+  // Stwórz pocisk w bazie z uwzględnieniem kierunku patrzenia
   const bulletData = {
     shooter: myId,
     x: player.x - Math.sin(player.yaw) * 1.5,
@@ -230,6 +265,10 @@ document.addEventListener('mousedown', () => {
     z: player.z - Math.cos(player.yaw) * 1.5
   };
   push(bulletsRef, bulletData);
+
+  // Efekt odrzutu broni
+  weaponMesh.position.z += 0.1;
+  setTimeout(() => weaponMesh.position.z = -0.5, 100);
 });
 
 function checkWallCollision(nx, nz) {
@@ -286,7 +325,7 @@ function animate(now) {
         y: Number((player.y - 0.8).toFixed(2)),
         z: Number(player.z.toFixed(2)),
         yaw: Number(player.yaw.toFixed(2)),
-        lives: player.lives,
+        lives: playerLives,
         score: score
       });
     }
