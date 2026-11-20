@@ -5,7 +5,9 @@ import {
   set,
   onValue,
   onDisconnect,
-  remove
+  remove,
+  update,
+  push
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -22,18 +24,21 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app); 
 
 const myId = "player_" + Math.random().toString(36).substring(2, 9);
-let currentRoom = "ogolny";
+let currentRoom = "arena-glowna";
 let myRef = null;
 let playersRef = null;
+let bulletsRef = null;
 let unsubPlayers = null;
+let unsubBullets = null;
 
 const connectedRef = ref(db, ".info/connected");
 
-// --- SCENA THREE.JS ---
+// --- SCENA THREE.JS (ZAMEK ARENA) ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x91b8d5);
-scene.fog = new THREE.Fog(0x91b8d5, 22, 75);
-const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 120);
+scene.background = new THREE.Color(0x283142);
+scene.fog = new THREE.Fog(0x283142, 15, 60);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 100);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -41,15 +46,14 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xd9efff, 0x46506a, 2));
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(-12, 24, 8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.5));
+const sun = new THREE.DirectionalLight(0xfff5e6, 1.8);
+sun.position.set(10, 25, 10);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
 scene.add(sun);
 
-const mat = (color, roughness = 0.85) => new THREE.MeshStandardMaterial({ color, roughness });
-const floorMat = mat(0x4d8062), wallMat = mat(0x68778a), trimMat = mat(0x34465b);
+const mat = (color, roughness = 0.7) => new THREE.MeshStandardMaterial({ color, roughness });
+const floorMat = mat(0x3d4452), wallMat = mat(0x525c6e), stoneMat = mat(0x6b778d);
 const solids = [];
 
 function block(x, y, z, w, h, d, material, collide = true) {
@@ -62,30 +66,36 @@ function block(x, y, z, w, h, d, material, collide = true) {
   return m;
 }
 
-block(0, -0.55, 0, 48, 1, 48, floorMat, false);
-block(0, 1, -24, 48, 3, 1, wallMat);
-block(0, 1, 24, 48, 3, 1, wallMat);
-block(-24, 1, 0, 1, 3, 48, wallMat);
-block(24, 1, 0, 1, 3, 48, wallMat);
+// Podłoga zamku (arena 40x40)
+block(0, -0.5, 0, 40, 1, 40, floorMat, false);
 
+// Mury zamkowe zewnętrzne
+block(0, 2, -20, 40, 5, 1, wallMat);
+block(0, 2, 20, 40, 5, 1, wallMat);
+block(-20, 2, 0, 1, 5, 40, wallMat);
+block(20, 2, 0, 1, 5, 40, wallMat);
+
+// Filarowe przeszkody / wieże na terenie zamku
 [
-  [-12, 0, 1, 28], [-3, -10, 18, 1], [7, -2, 1, 25], [15, 10, 18, 1],
-  [-14, 15, 15, 1], [-18, -12, 1, 14], [-8, 7, 1, 13], [0, 18, 1, 10],
-  [13, -16, 16, 1], [19, -5, 1, 13], [-2, 1, 10, 1], [8, 8, 1, 10]
-].forEach(([x, z, w, d]) => block(x, 1.15, z, w, 2.3, d, wallMat));
+  [-10, -10, 4, 4], [10, -10, 4, 4], [-10, 10, 4, 4], [10, 10, 4, 4],
+  [0, -12, 6, 2], [0, 12, 6, 2], [-12, 0, 2, 6], [12, 0, 2, 6]
+].forEach(([x, z, w, d]) => block(x, 1.5, z, w, 4, d, stoneMat));
 
-for (let i = 0; i < 18; i++) {
-  const x = ((i * 17) % 39) - 19, z = ((i * 23) % 39) - 19;
-  if (Math.abs(x) < 5 && Math.abs(z) < 5) continue;
-  const p = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.38, 1.8, 8), trimMat);
-  p.position.set(x, 0.9, z);
-  p.castShadow = true;
-  scene.add(p);
+// Punkty losowego respawnu na arenie
+const spawnPoints = [
+  { x: -15, z: -15 }, { x: 15, z: -15 },
+  { x: -15, z: 15 }, { x: 15, z: 15 },
+  { x: 0, z: -15 }, { x: 0, z: 15 }
+];
+
+function getRandomSpawn() {
+  const sp = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+  return { x: sp.x, z: sp.z };
 }
 
 // --- ZARZĄDZANIE POKOJAMI I FIREBASE ---
 const otherPlayers = {};
-const otherMat = mat(0xff9800);
+const otherMat = mat(0xff5722);
 
 onValue(connectedRef, (snap) => {
   const statusEl = document.getElementById('net-status');
@@ -99,35 +109,35 @@ onValue(connectedRef, (snap) => {
 });
 
 function joinRoom(roomName) {
-  // Jeśli gracz był już w jakimś pokoju, usuń starego mesha i listenera
-  if (myRef) {
-    remove(myRef);
-  }
-  if (unsubPlayers) {
-    unsubPlayers();
-  }
+  if (myRef) remove(myRef);
+  if (unsubPlayers) unsubPlayers();
+  if (unsubBullets) unsubBullets();
 
-  // Wyczyść starych graczy z widoku
   for (const id in otherPlayers) {
     scene.remove(otherPlayers[id]);
     delete otherPlayers[id];
   }
 
-  currentRoom = roomName.trim() || "ogolny";
+  currentRoom = roomName.trim() || "arena-glowna";
   document.getElementById('room-name-display').textContent = currentRoom;
 
   myRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
   playersRef = ref(db, `rooms/${currentRoom}/players`);
+  bulletsRef = ref(db, `rooms/${currentRoom}/bullets`);
+
+  const spawn = getRandomSpawn();
+  player.x = spawn.x;
+  player.z = spawn.z;
+  player.lives = 3;
 
   onDisconnect(myRef).remove();
-  set(myRef, { x: 0, y: 0.8, z: 0, yaw: 0 });
+  set(myRef, { x: player.x, y: 0.8, z: player.z, yaw: 0, lives: 3, score: 0 });
 
-  // Nasłuchuj graczy TYLKO w wybranym pokoju
+  // Nasłuchiwanie graczy w pokoju
   unsubPlayers = onValue(playersRef, (snapshot) => {
     const data = snapshot.val() || {};
     const activeIds = Object.keys(data);
-    const countEl = document.getElementById('players-count');
-    if (countEl) countEl.textContent = activeIds.length;
+    document.getElementById('players-count').textContent = activeIds.length;
 
     for (const id of activeIds) {
       if (id === myId) continue;
@@ -149,42 +159,37 @@ function joinRoom(roomName) {
       }
     }
   });
+
+  // Nasłuchiwanie strzałów (pocisków)
+  unsubBullets = onValue(bulletsRef, (snapshot) => {
+    const data = snapshot.val() || {};
+    for (const bId in data) {
+      const b = data[bId];
+      // Sprawdź czy pocisk kogoś trafił (jeśli to nie mój pocisk)
+      if (b.shooter !== myId) {
+        const dist = Math.hypot(player.x - b.x, player.z - b.z);
+        if (dist < 0.9 && player.lives > 0) {
+          // Trafienie! Tracisz życie i respawn w losowym miejscu
+          player.lives--;
+          document.getElementById('lives').textContent = player.lives;
+          const sp = getRandomSpawn();
+          player.x = sp.x;
+          player.z = sp.z;
+          
+          update(myRef, { lives: player.lives, x: player.x, z: player.z });
+
+          if (player.lives <= 0) {
+            endGame('💀 Zostałeś pokonany na arenie!');
+          }
+        }
+      }
+    }
+  });
 }
 
-// --- KRYSZTAŁY I STRAŻNICY ---
-const crystals = [];
-const crystalMat = new THREE.MeshStandardMaterial({
-  color: 0x45f4ee, emissive: 0x087d89, emissiveIntensity: 0.7, roughness: 0.2
-});
-[
-  [-20, -20], [20, -20], [-20, 20], [20, 20],
-  [-5, -18], [12, 3], [-15, 5], [3, 14]
-].forEach(([x, z]) => {
-  const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.45), crystalMat);
-  c.position.set(x, 1.0, z);
-  c.castShadow = true;
-  scene.add(c);
-  crystals.push(c);
-});
-
-const guards = [];
-const guardMat = new THREE.MeshStandardMaterial({ color: 0xff3b5c, emissive: 0x660011 });
-[
-  { x: -10, z: -15, axis: 'x', range: 6, speed: 3 },
-  { x: 12, z: -8, axis: 'z', range: 7, speed: 3.5 },
-  { x: -5, z: 12, axis: 'x', range: 8, speed: 4 },
-  { x: 15, z: 16, axis: 'z', range: 5, speed: 3 }
-].forEach(cfg => {
-  const g = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.8, 12), guardMat);
-  g.position.set(cfg.x, 0.9, cfg.z);
-  g.castShadow = true;
-  scene.add(g);
-  guards.push({ mesh: g, startX: cfg.x, startZ: cfg.z, ...cfg });
-});
-
-// --- STEROWANIE ---
-let score = 0, lives = 3, isPlaying = false;
-const player = { x: 0, y: 1.6, z: 0, vy: 0, yaw: 0, pitch: 0, onGround: true };
+// --- STEROWANIE I GRA ---
+let score = 0, isPlaying = false;
+const player = { x: 0, y: 1.6, z: 0, vy: 0, yaw: 0, pitch: 0, onGround: true, lives: 3 };
 const keys = {};
 
 addEventListener('keydown', e => keys[e.code] = true);
@@ -197,13 +202,13 @@ const msgEl = document.getElementById('message');
 
 startBtn.onclick = () => {
   const roomName = roomInput.value.trim();
-  if (!roomName) {
-    alert('Wpisz nazwę pokoju!');
-    return;
-  }
+  if (!roomName) { alert('Wpisz nazwę pokoju!'); return; }
   
   joinRoom(roomName);
-  if (lives <= 0 || score === crystals.length) resetGame();
+  score = 0;
+  document.getElementById('score').textContent = score;
+  document.getElementById('lives').textContent = player.lives;
+  msgEl.textContent = '';
   renderer.domElement.requestPointerLock();
 };
 
@@ -218,21 +223,28 @@ document.addEventListener('mousemove', e => {
   player.pitch = Math.max(-1.4, Math.min(1.4, player.pitch - e.movementY * 0.0022));
 });
 
+// Strzelanie na kliknięcie myszy
+document.addEventListener('mousedown', () => {
+  if (!isPlaying || !bulletsRef) return;
+  
+  // Stwórz pocisk w bazie Firebase
+  const bulletData = {
+    shooter: myId,
+    x: player.x - Math.sin(player.yaw) * 1.5,
+    y: player.y,
+    z: player.z - Math.cos(player.yaw) * 1.5,
+    dx: -Math.sin(player.yaw) * 15,
+    dz: -Math.cos(player.yaw) * 15
+  };
+  push(bulletsRef, bulletData);
+});
+
 function checkWallCollision(nx, nz) {
   const r = 0.45;
   for (const s of solids) {
     if (Math.abs(nx - s.x) < s.w / 2 + r && Math.abs(nz - s.z) < s.d / 2 + r) return true;
   }
   return false;
-}
-
-function resetGame() {
-  score = 0; lives = 3;
-  document.getElementById('score').textContent = score;
-  document.getElementById('lives').textContent = lives;
-  msgEl.textContent = '';
-  player.x = 0; player.y = 1.6; player.z = 0; player.vy = 0;
-  crystals.forEach(c => c.visible = true);
 }
 
 function endGame(text) {
@@ -250,10 +262,8 @@ function animate(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
 
-  crystals.forEach(c => { if (c.visible) c.rotation.y += dt * 2; });
-
   if (isPlaying) {
-    const speed = (keys['ShiftLeft'] ? 9 : 5.5) * dt;
+    const speed = (keys['ShiftLeft'] ? 8 : 5) * dt;
     const forward = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
     const strafe = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
 
@@ -265,7 +275,7 @@ function animate(now) {
     if (!checkWallCollision(player.x, player.z + dz)) player.z += dz;
 
     if (keys['Space'] && player.onGround) {
-      player.vy = 7.5;
+      player.vy = 7;
       player.onGround = false;
     }
     player.vy -= 20 * dt;
@@ -282,31 +292,11 @@ function animate(now) {
         x: Number(player.x.toFixed(2)),
         y: Number((player.y - 0.8).toFixed(2)),
         z: Number(player.z.toFixed(2)),
-        yaw: Number(player.yaw.toFixed(2))
+        yaw: Number(player.yaw.toFixed(2)),
+        lives: player.lives,
+        score: score
       });
     }
-
-    crystals.forEach(c => {
-      if (c.visible && Math.hypot(player.x - c.position.x, player.z - c.position.z) < 1.1) {
-        c.visible = false;
-        score++;
-        document.getElementById('score').textContent = score;
-        if (score === crystals.length) endGame('🎉 Wygrałeś! Zebrałeś wszystkie kryształy!');
-      }
-    });
-
-    guards.forEach(g => {
-      const offset = Math.sin(now * 0.001 * g.speed) * g.range;
-      if (g.axis === 'x') g.mesh.position.x = g.startX + offset;
-      else g.mesh.position.z = g.startZ + offset;
-
-      if (Math.hypot(player.x - g.mesh.position.x, player.z - g.mesh.position.z) < 0.95) {
-        lives--;
-        document.getElementById('lives').textContent = lives;
-        player.x = 0; player.z = 0;
-        if (lives <= 0) endGame('💀 Koniec gry! Złapali Cię strażnicy.');
-      }
-    });
   }
 
   camera.position.set(player.x, player.y, player.z);
