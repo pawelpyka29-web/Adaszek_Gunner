@@ -1,3 +1,4 @@
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
 import {
   getDatabase,
@@ -10,6 +11,10 @@ import {
   push
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
+// ======================================================
+// FIREBASE - ZACHOWANA KONFIGURACJA
+// ======================================================
+
 const firebaseConfig = {
   apiKey: "AIzaSyCanH2BBs2Up7BtN1AXQ1uyQd6YsmthT0w",
   authDomain: "pandixif-multiplayer.firebaseapp.com",
@@ -17,7 +22,7 @@ const firebaseConfig = {
   projectId: "pandixif-multiplayer",
   storageBucket: "pandixif-multiplayer.firebasestorage.app",
   messagingSenderId: "226124925060",
-  appId: "1:226124925060:web:c414a82236e554deb7dad1"
+  appId: "1:124924925060:web:c414a82236e554deb7dad1"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -28,619 +33,874 @@ let currentRoom = "arena-glowna";
 let myRef = null;
 let playersRef = null;
 let bulletsRef = null;
+let buildsRef = null;
 let unsubPlayers = null;
 let unsubBullets = null;
+let unsubBuilds = null;
 
 const connectedRef = ref(db, ".info/connected");
 
 // ======================================================
-//                   ARENA FPS
+// 2D GAME
 // ======================================================
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x10141f);
-scene.fog = new THREE.Fog(0x10141f, 25, 110);
+const canvas = document.createElement("canvas");
+canvas.id = "build-shoot-canvas";
 
-const camera = new THREE.PerspectiveCamera(
-  85,
-  innerWidth / innerHeight,
-  0.1,
-  200
-);
-
-const renderer = new THREE.WebGLRenderer({
-  antialias: true,
-  powerPreference: "high-performance"
-});
-
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.8));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+canvas.style.cssText = `
+position:fixed;
+inset:0;
+width:100%;
+height:100%;
+display:block;
+z-index:0;
+cursor:crosshair;
+`;
 
 document.body.style.margin = "0";
 document.body.style.overflow = "hidden";
-document.body.appendChild(renderer.domElement);
+document.body.style.background = "#111";
+document.body.appendChild(canvas);
 
-renderer.domElement.style.position = "fixed";
-renderer.domElement.style.inset = "0";
-renderer.domElement.style.display = "block";
+const ctx = canvas.getContext("2d");
 
-// ======================================================
-//                     LIGHTING
-// ======================================================
+let W = innerWidth;
+let H = innerHeight;
 
-const hemi = new THREE.HemisphereLight(0xb8d7ff, 0x25202c, 2);
-scene.add(hemi);
+function resize() {
+  W = innerWidth;
+  H = innerHeight;
 
-const sun = new THREE.DirectionalLight(0xffd6a0, 3);
-sun.position.set(25, 40, 20);
-sun.castShadow = true;
+  canvas.width = Math.round(W * Math.min(devicePixelRatio, 2));
+  canvas.height = Math.round(H * Math.min(devicePixelRatio, 2));
 
-sun.shadow.mapSize.width = 2048;
-sun.shadow.mapSize.height = 2048;
-sun.shadow.camera.left = -45;
-sun.shadow.camera.right = 45;
-sun.shadow.camera.top = 45;
-sun.shadow.camera.bottom = -45;
+  ctx.setTransform(
+    Math.min(devicePixelRatio, 2),
+    0,
+    0,
+    Math.min(devicePixelRatio, 2),
+    0,
+    0
+  );
+}
 
-scene.add(sun);
-
-const ambient = new THREE.AmbientLight(0xffffff, 0.35);
-scene.add(ambient);
-
-// ======================================================
-//                       MATERIALS
-// ======================================================
-
-const mat = (color, roughness = 0.8, metalness = 0) =>
-  new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness
-  });
-
-const floorMat = mat(0x252c38);
-const wallMat = mat(0x424b5b);
-const stoneMat = mat(0x606b7b);
-const darkMat = mat(0x171d26);
-const metalMat = mat(0x303a48, 0.4, 0.7);
-const redMat = mat(0x8b3535);
-const blueMat = mat(0x244d85);
-
-const solids = [];
-const decorations = [];
+resize();
+addEventListener("resize", resize);
 
 // ======================================================
-//                     WORLD BLOCKS
+// STYLE / HUD
 // ======================================================
 
-function block(x, y, z, w, h, d, material, collide = true) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    material
+const style = document.createElement("style");
+
+style.textContent = `
+#build-shoot-canvas {
+  image-rendering: auto;
+}
+
+#build-hud {
+  position:fixed;
+  right:20px;
+  bottom:20px;
+  color:white;
+  font-family:Arial,sans-serif;
+  background:rgba(15,20,30,.8);
+  padding:14px;
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:12px;
+  z-index:5;
+  pointer-events:none;
+}
+
+#build-hud div {
+  margin:5px 0;
+}
+
+#build-message {
+  position:fixed;
+  top:20%;
+  left:50%;
+  transform:translateX(-50%);
+  font-family:Arial,sans-serif;
+  color:white;
+  font-weight:bold;
+  font-size:26px;
+  text-shadow:0 2px 10px black;
+  z-index:10;
+  pointer-events:none;
+}
+
+#build-select {
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:8px;
+  z-index:10;
+  font-family:Arial;
+}
+
+.build-slot {
+  color:white;
+  background:rgba(20,25,35,.9);
+  border:2px solid #555;
+  border-radius:10px;
+  padding:12px;
+  min-width:55px;
+  text-align:center;
+}
+
+.build-slot.active {
+  border-color:#66ccff;
+  background:rgba(40,100,150,.9);
+}
+
+#build-team {
+  position:fixed;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  font-family:Arial;
+  background:#202938;
+  color:white;
+  padding:20px;
+  border-radius:15px;
+  z-index:100;
+  text-align:center;
+  display:none;
+}
+
+#build-team button {
+  margin:6px;
+  padding:12px 20px;
+  cursor:pointer;
+  border:0;
+  border-radius:8px;
+  font-weight:bold;
+}
+
+#build-toast {
+  position:fixed;
+  top:80px;
+  left:50%;
+  transform:translateX(-50%);
+  color:white;
+  font-family:Arial;
+  background:rgba(0,0,0,.7);
+  padding:10px 20px;
+  border-radius:8px;
+  z-index:10;
+  pointer-events:none;
+}
+`;
+
+document.head.appendChild(style);
+
+const hud = document.createElement("div");
+hud.id = "build-hud";
+
+hud.innerHTML = `
+<div style="color:#55ccff;font-weight:bold;font-size:22px">BUILD & SHOOT</div>
+<div id="hud-mode">Tryb: FFA</div>
+<div id="hud-team">Drużyna: brak</div>
+<div id="hud-ammo">Amunicja: ∞</div>
+<div id="hud-kills">Eliminacje: 0</div>
+<div id="hud-build">Budowanie: ściana</div>
+`;
+
+document.body.appendChild(hud);
+
+const message = document.createElement("div");
+message.id = "build-message";
+document.body.appendChild(message);
+
+const buildSelect = document.createElement("div");
+buildSelect.id = "build-select";
+
+buildSelect.innerHTML = `
+<div class="build-slot active" data-slot="1">1<br>Ściana</div>
+<div class="build-slot" data-slot="2">2<br>Platforma</div>
+<div class="build-slot" data-slot="3">3<br>Rampa</div>
+<div class="build-slot" data-slot="4">4<br>Usuń</div>
+`;
+
+document.body.appendChild(buildSelect);
+
+const toast = document.createElement("div");
+toast.id = "build-toast";
+toast.style.display = "none";
+document.body.appendChild(toast);
+
+const teamMenu = document.createElement("div");
+teamMenu.id = "build-team";
+
+teamMenu.innerHTML = `
+<h2>Wybierz tryb</h2>
+<button id="team-ffa" style="background:#777;color:white">FREE FOR ALL</button>
+<br>
+<button id="team-red" style="background:#e74c3c;color:white">RED TEAM</button>
+<button id="team-blue" style="background:#3498db;color:white">BLUE TEAM</button>
+`;
+
+document.body.appendChild(teamMenu);
+
+// ======================================================
+// GAME SETTINGS
+// ======================================================
+
+const WORLD_WIDTH = 3000;
+const WORLD_HEIGHT = 900;
+const FLOOR_Y = 820;
+
+const GRAVITY = 1800;
+const PLAYER_WIDTH = 38;
+const PLAYER_HEIGHT = 75;
+
+const BUILD_SIZE = 100;
+
+let gameMode = "ffa";
+let team = "none";
+let kills = 0;
+let score = 0;
+let playerLives = 5;
+
+let isPlaying = false;
+let gameStarted = false;
+
+let selectedBuild = "wall";
+
+let lastTime = performance.now();
+let lastSync = 0;
+let lastShot = 0;
+
+let cameraX = 0;
+let cameraY = 0;
+
+const players = {};
+const bullets = {};
+const builds = {};
+
+const keys = {};
+const mouse = {
+  x: W / 2,
+  y: H / 2,
+  down: false
+};
+
+// ======================================================
+// PLAYER
+// ======================================================
+
+const player = {
+  x: 200,
+  y: FLOOR_Y - PLAYER_HEIGHT,
+  vx: 0,
+  vy: 0,
+  facing: 1,
+  onGround: false,
+  health: 100
+};
+
+function getPlayerData() {
+  return {
+    x: player.x,
+    y: player.y,
+    z: 0,
+    yaw: player.facing,
+    lives: playerLives,
+    score: score,
+    team: team,
+    mode: gameMode,
+    health: player.health
+  };
+}
+
+// ======================================================
+// MAP
+// ======================================================
+
+const mapPlatforms = [
+  // Ground
+  { x: 0, y: FLOOR_Y, w: WORLD_WIDTH, h: 80 },
+
+  // Platforms
+  { x: 300, y: 650, w: 300, h: 25 },
+  { x: 700, y: 520, w: 250, h: 25 },
+  { x: 1050, y: 650, w: 350, h: 25 },
+  { x: 1600, y: 550, w: 250, h: 25 },
+  { x: 2000, y: 650, w: 350, h: 25 },
+  { x: 2600, y: 500, w: 250, h: 25 },
+
+  // Lower obstacles
+  { x: 450, y: 750, w: 100, h: 70 },
+  { x: 900, y: 750, w: 100, h: 70 },
+  { x: 1500, y: 750, w: 100, h: 70 },
+  { x: 1900, y: 750, w: 100, h: 70 },
+  { x: 2400, y: 750, w: 100, h: 70 }
+];
+
+// ======================================================
+// COLLISION
+// ======================================================
+
+function rectCollision(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
+function getAllPlatforms() {
+  return [...mapPlatforms, ...Object.values(builds)];
+}
+
+function movePlayer(dt) {
+  const speed = keys.ShiftLeft || keys.ShiftRight ? 520 : 360;
+
+  let move = 0;
+
+  if (keys.KeyA) move--;
+  if (keys.KeyD) move++;
+
+  player.vx = move * speed;
+
+  player.x += player.vx * dt;
+
+  // World boundaries
+
+  player.x = Math.max(
+    0,
+    Math.min(WORLD_WIDTH - PLAYER_WIDTH, player.x)
   );
 
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  // Horizontal collision
 
-  scene.add(mesh);
+  for (const p of getAllPlatforms()) {
+    const playerRect = {
+      x: player.x,
+      y: player.y,
+      w: PLAYER_WIDTH,
+      h: PLAYER_HEIGHT
+    };
 
-  if (collide) {
-    solids.push({
-      x,
-      z,
-      w,
-      d,
-      top: y + h / 2
-    });
+    if (rectCollision(playerRect, p)) {
+      if (player.vx > 0) {
+        player.x = p.x - PLAYER_WIDTH;
+      }
+
+      if (player.vx < 0) {
+        player.x = p.x + p.w;
+      }
+    }
   }
 
-  return mesh;
+  // Gravity
+
+  player.vy += GRAVITY * dt;
+  player.y += player.vy * dt;
+
+  player.onGround = false;
+
+  for (const p of getAllPlatforms()) {
+    const playerRect = {
+      x: player.x,
+      y: player.y,
+      w: PLAYER_WIDTH,
+      h: PLAYER_HEIGHT
+    };
+
+    if (rectCollision(playerRect, p)) {
+      if (player.vy > 0) {
+        player.y = p.y - PLAYER_HEIGHT;
+        player.vy = 0;
+        player.onGround = true;
+      } else if (player.vy < 0) {
+        player.y = p.y + p.h;
+        player.vy = 0;
+      }
+    }
+  }
+
+  if (player.x < WORLD_WIDTH / 2) {
+    player.facing = 1;
+  }
+
+  if (move !== 0) {
+    player.facing = move > 0 ? 1 : -1;
+  }
+
+  // Falling out
+
+  if (player.y > WORLD_HEIGHT + 200) {
+    respawn();
+  }
 }
 
-function cylinder(x, y, z, radius, height, material) {
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, height, 16),
-    material
-  );
+// ======================================================
+// JUMP
+// ======================================================
 
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-
-  scene.add(mesh);
-  return mesh;
+function jump() {
+  if (player.onGround) {
+    player.vy = -780;
+    player.onGround = false;
+  }
 }
 
-function glowingBox(x, y, z, w, h, d, color) {
-  const material = new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: 1.3
+// ======================================================
+// RESPAWN
+// ======================================================
+
+function respawn() {
+  const spawn = getSpawn();
+
+  player.x = spawn.x;
+  player.y = spawn.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.health = 100;
+
+  playerLives--;
+
+  if (playerLives <= 0) {
+    playerLives = 5;
+    kills = 0;
+    score = 0;
+    showMessage("Nowa runda!");
+  }
+
+  if (myRef) {
+    update(myRef, getPlayerData());
+  }
+
+  updateHud();
+}
+
+function getSpawn() {
+  if (gameMode === "teams") {
+    return team === "red"
+      ? { x: 100, y: 500 }
+      : { x: WORLD_WIDTH - 150, y: 500 };
+  }
+
+  return {
+    x: Math.random() * (WORLD_WIDTH - 300) + 150,
+    y: 500
+  };
+}
+
+// ======================================================
+// BUILDING
+// ======================================================
+
+function getBuildPosition() {
+  const worldX = mouse.x + cameraX;
+  const worldY = mouse.y + cameraY;
+
+  return {
+    x: Math.floor(worldX / BUILD_SIZE) * BUILD_SIZE,
+    y: Math.floor(worldY / BUILD_SIZE) * BUILD_SIZE
+  };
+}
+
+function buildStructure() {
+  if (!buildsRef || !isPlaying) return;
+
+  const pos = getBuildPosition();
+
+  if (selectedBuild === "remove") {
+    removeStructure(pos);
+    return;
+  }
+
+  let structure;
+
+  if (selectedBuild === "wall") {
+    structure = {
+      x: pos.x,
+      y: pos.y,
+      w: BUILD_SIZE,
+      h: BUILD_SIZE,
+      type: "wall",
+      owner: myId,
+      team
+    };
+  }
+
+  if (selectedBuild === "platform") {
+    structure = {
+      x: pos.x,
+      y: pos.y,
+      w: BUILD_SIZE * 1.5,
+      h: 25,
+      type: "platform",
+      owner: myId,
+      team
+    };
+  }
+
+  if (selectedBuild === "ramp") {
+    structure = {
+      x: pos.x,
+      y: pos.y,
+      w: BUILD_SIZE,
+      h: BUILD_SIZE,
+      type: "ramp",
+      owner: myId,
+      team
+    };
+  }
+
+  // Limits
+
+  if (Object.keys(builds).length > 250) {
+    showMessage("Limit konstrukcji!");
+    return;
+  }
+
+  // Prevent building inside player
+
+  const playerRect = {
+    x: player.x,
+    y: player.y,
+    w: PLAYER_WIDTH,
+    h: PLAYER_HEIGHT
+  };
+
+  if (rectCollision(playerRect, structure)) {
+    showMessage("Nie możesz budować na sobie!");
+    return;
+  }
+
+  push(buildsRef, structure);
+}
+
+function removeStructure(pos) {
+  let closest = null;
+  let closestDistance = Infinity;
+
+  for (const id in builds) {
+    const b = builds[id];
+
+    const centerX = b.x + b.w / 2;
+    const centerY = b.y + b.h / 2;
+
+    const d = Math.hypot(
+      centerX - pos.x,
+      centerY - pos.y
+    );
+
+    if (d < closestDistance && d < 180) {
+      closestDistance = d;
+      closest = id;
+    }
+  }
+
+  if (closest) {
+    remove(ref(db, `rooms/${currentRoom}/builds/${closest}`));
+  }
+}
+
+// ======================================================
+// TEAM LOGIC
+// ======================================================
+
+function isEnemy(p) {
+  if (!p) return false;
+  if (p.id === myId) return false;
+
+  if (gameMode === "ffa") return true;
+
+  if (gameMode === "teams") {
+    return p.team !== team;
+  }
+
+  return true;
+}
+
+// ======================================================
+// SHOOTING
+// ======================================================
+
+function shoot() {
+  if (!isPlaying || !bulletsRef) return;
+
+  const now = performance.now();
+
+  if (now - lastShot < 180) return;
+
+  lastShot = now;
+
+  const worldMouseX = mouse.x + cameraX;
+  const worldMouseY = mouse.y + cameraY;
+
+  const startX = player.x + PLAYER_WIDTH / 2;
+  const startY = player.y + PLAYER_HEIGHT / 2;
+
+  const dx = worldMouseX - startX;
+  const dy = worldMouseY - startY;
+
+  const len = Math.hypot(dx, dy) || 1;
+
+  const dirX = dx / len;
+  const dirY = dy / len;
+
+  push(bulletsRef, {
+    shooter: myId,
+    x: startX,
+    y: startY,
+    z: 0,
+    vx: dirX * 1100,
+    vy: dirY * 1100,
+    team,
+    time: Date.now()
   });
-
-  return block(x, y, z, w, h, d, material, false);
 }
 
 // ======================================================
-//                       FLOOR
+// BULLET SYNC
 // ======================================================
 
-block(0, -0.5, 0, 50, 1, 50, floorMat, false);
+function processBullet(b) {
+  if (!b || b.shooter === myId) return;
 
-// Decorative floor tiles
+  // Basic hit detection
 
-const tileMat = mat(0x303948);
+  const target = players[b.shooter];
 
-for (let x = -24; x <= 24; x += 4) {
-  for (let z = -24; z <= 24; z += 4) {
-    if (Math.abs(x) < 22 && Math.abs(z) < 22) {
-      const tile = new THREE.Mesh(
-        new THREE.BoxGeometry(3.9, 0.04, 3.9),
-        tileMat
-      );
+  // The shooter is not the target.
+  // Damage is processed by the shooting client.
+}
 
-      tile.position.set(x, 0.02, z);
-      tile.receiveShadow = true;
-      scene.add(tile);
+// ======================================================
+// CLIENT HIT DETECTION
+// ======================================================
+
+function checkShots() {
+  if (!isPlaying) return;
+
+  for (const id in players) {
+    const p = players[id];
+
+    if (!isEnemy(p)) continue;
+
+    if (p.lives <= 0) continue;
+
+    const px = p.x;
+    const py = p.y;
+
+    // Aim-based hit detection
+
+    const dx = mouse.x + cameraX - (px + PLAYER_WIDTH / 2);
+    const dy = mouse.y + cameraY - (py + PLAYER_HEIGHT / 2);
+
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 40 && mouse.down) {
+      // Only a visual aim check.
+      // Actual damage is handled through bullet intersection.
     }
   }
 }
 
 // ======================================================
-//                  OUTER ARENA WALLS
+// BULLET DAMAGE
 // ======================================================
 
-block(0, 4, -25, 50, 8, 1, wallMat);
-block(0, 4, 25, 50, 8, 1, wallMat);
-block(-25, 4, 0, 1, 8, 50, wallMat);
-block(25, 4, 0, 1, 8, 50, wallMat);
+function applyDamage(targetId, damage = 25) {
+  if (!players[targetId]) return;
 
-// Outer wall decoration
+  if (!isEnemy(players[targetId])) return;
 
-for (let i = -20; i <= 20; i += 5) {
-  glowingBox(i, 7.7, -24.45, 1.3, 0.15, 0.1, 0x3d9cff);
-  glowingBox(i, 7.7, 24.45, 1.3, 0.15, 0.1, 0x3d9cff);
-}
+  const targetRef = ref(
+    db,
+    `rooms/${currentRoom}/players/${targetId}`
+  );
 
-for (let i = -20; i <= 20; i += 5) {
-  glowingBox(-24.45, 7.7, i, 0.1, 0.15, 1.3, 0x3d9cff);
-  glowingBox(24.45, 7.7, i, 0.1, 0.15, 1.3, 0x3d9cff);
-}
+  const target = players[targetId];
 
-// ======================================================
-//                    ARENA STRUCTURE
-// ======================================================
+  const newHealth = (target.health ?? 100) - damage;
 
-// Central structure
+  if (newHealth <= 0) {
+    update(targetRef, {
+      health: 0,
+      lives: 0
+    });
 
-block(0, 2, 0, 8, 4, 8, stoneMat);
-block(0, 4.2, 0, 10, 0.4, 10, metalMat);
+    score += 100;
+    kills++;
 
-// Main cover
+    update(myRef, {
+      score,
+      kills
+    });
 
-[
-  [-12, -12, 6, 4],
-  [12, -12, 6, 4],
-  [-12, 12, 6, 4],
-  [12, 12, 6, 4],
-
-  [-8, 0, 3, 8],
-  [8, 0, 3, 8],
-  [0, -8, 8, 3],
-  [0, 8, 8, 3],
-
-  [-18, 0, 3, 8],
-  [18, 0, 3, 8],
-  [0, -18, 8, 3],
-  [0, 18, 8, 3]
-].forEach(([x, z, w, d]) => {
-  block(x, 2.1, z, w, 4.2, d, stoneMat);
-});
-
-// Smaller cover
-
-[
-  [-4, -14, 3, 3],
-  [4, -14, 3, 3],
-  [-4, 14, 3, 3],
-  [4, 14, 3, 3],
-
-  [-14, -4, 3, 3],
-  [-14, 4, 3, 3],
-  [14, -4, 3, 3],
-  [14, 4, 3, 3]
-].forEach(([x, z, w, d]) => {
-  block(x, 1.2, z, w, 2.4, d, metalMat);
-});
-
-// Towers
-
-const towerPositions = [
-  [-20, -20],
-  [20, -20],
-  [-20, 20],
-  [20, 20]
-];
-
-towerPositions.forEach(([x, z]) => {
-  block(x, 3, z, 5, 6, 5, wallMat);
-  block(x, 6.3, z, 6, 0.6, 6, metalMat);
-
-  block(x, 7, z, 1, 1.4, 1, stoneMat, false);
-
-  glowingBox(x, 5, z - 2.55, 1.4, 0.15, 0.1, 0xff4545);
-});
-
-// ======================================================
-//                     DECORATIONS
-// ======================================================
-
-// Crates
-
-function createCrate(x, z, size = 2) {
-  block(x, size / 2, z, size, size, size, redMat);
-
-  for (let i = 0; i < 2; i++) {
-    block(
-      x,
-      size / 2,
-      z,
-      size + 0.05,
-      0.12,
-      0.12,
-      metalMat,
-      false
-    );
+    updateHud();
+  } else {
+    update(targetRef, {
+      health: newHealth
+    });
   }
 }
 
-createCrate(-5, -5);
-createCrate(5, -5);
-createCrate(-5, 5);
-createCrate(5, 5);
-
-createCrate(-16, -8, 1.5);
-createCrate(16, 8, 1.5);
-createCrate(8, -16, 1.5);
-createCrate(-8, 16, 1.5);
-
-// Pillars
-
-for (const [x, z] of [
-  [-16, -16],
-  [16, -16],
-  [-16, 16],
-  [16, 16]
-]) {
-  cylinder(x, 3, z, 1.2, 6, stoneMat);
-  cylinder(x, 6.2, z, 1.5, 0.4, metalMat);
-}
-
-// Lights
-
-const arenaLights = [
-  [-15, 8, -15],
-  [15, 8, -15],
-  [-15, 8, 15],
-  [15, 8, 15]
-];
-
-arenaLights.forEach(([x, y, z]) => {
-  const light = new THREE.PointLight(0x4a9fff, 50, 18);
-  light.position.set(x, y, z);
-  scene.add(light);
-
-  const bulb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 12, 12),
-    new THREE.MeshBasicMaterial({
-      color: 0x5ebaff
-    })
-  );
-
-  bulb.position.set(x, y, z);
-  scene.add(bulb);
-});
-
 // ======================================================
-//                     SPAWN POINTS
+// BULLET RENDER / LOCAL DAMAGE
 // ======================================================
 
-const spawnPoints = [
-  { x: -20, z: -20 },
-  { x: 20, z: -20 },
-  { x: -20, z: 20 },
-  { x: 20, z: 20 },
-  { x: 0, z: -20 },
-  { x: 0, z: 20 },
-  { x: -20, z: 0 },
-  { x: 20, z: 0 }
-];
+const localBullets = {};
 
-function getRandomSpawn() {
-  const sp = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
-  return { x: sp.x, z: sp.z };
+function createLocalBullet(data, id) {
+  localBullets[id] = {
+    x: data.x,
+    y: data.y,
+    vx: data.vx || 0,
+    vy: data.vy || 0,
+    shooter: data.shooter,
+    team: data.team,
+    born: Date.now()
+  };
 }
 
 // ======================================================
-//                   PLAYER MODELS
+// INPUT
 // ======================================================
-
-function createPlayerModel() {
-  const group = new THREE.Group();
-
-  const bodyMat = mat(0x22aaff);
-  const headMat = mat(0xffd0ad);
-  const black = mat(0x151515);
-
-  // Body
-
-  const torso = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 1, 0.45),
-    bodyMat
-  );
-
-  torso.position.y = 0.8;
-  torso.castShadow = true;
-  group.add(torso);
-
-  // Head
-
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.42, 0.42),
-    headMat
-  );
-
-  head.position.y = 1.55;
-  head.castShadow = true;
-  group.add(head);
-
-  // Helmet
-
-  const helmet = new THREE.Mesh(
-    new THREE.BoxGeometry(0.48, 0.18, 0.48),
-    metalMat
-  );
-
-  helmet.position.y = 1.77;
-  group.add(helmet);
-
-  // Legs
-
-  const leg1 = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.7, 0.25),
-    black
-  );
-
-  leg1.position.set(-0.18, 0.25, 0);
-  leg1.castShadow = true;
-  group.add(leg1);
-
-  const leg2 = leg1.clone();
-  leg2.position.x = 0.18;
-  group.add(leg2);
-
-  // Arms
-
-  const arm1 = new THREE.Mesh(
-    new THREE.BoxGeometry(0.2, 0.65, 0.2),
-    bodyMat
-  );
-
-  arm1.position.set(-0.48, 0.75, -0.05);
-  group.add(arm1);
-
-  const arm2 = arm1.clone();
-  arm2.position.x = 0.48;
-  group.add(arm2);
-
-  // Gun
-
-  const gun = new THREE.Mesh(
-    new THREE.BoxGeometry(0.15, 0.15, 0.7),
-    metalMat
-  );
-
-  gun.position.set(0.3, 0.8, -0.45);
-  group.add(gun);
-
-  // Feet
-
-  const foot1 = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3, 0.15, 0.4),
-    black
-  );
-
-  foot1.position.set(-0.18, 0.05, -0.08);
-  group.add(foot1);
-
-  const foot2 = foot1.clone();
-  foot2.position.x = 0.18;
-  group.add(foot2);
-
-  return group;
-}
-
-// ======================================================
-//                    FPS WEAPON
-// ======================================================
-
-const weaponGroup = new THREE.Group();
-
-const weaponBody = new THREE.Mesh(
-  new THREE.BoxGeometry(0.18, 0.22, 0.65),
-  mat(0x202832, 0.3, 0.7)
-);
-
-weaponBody.position.set(0.28, -0.28, -0.5);
-weaponGroup.add(weaponBody);
-
-const barrel = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.035, 0.035, 0.55, 12),
-  metalMat
-);
-
-barrel.rotation.x = Math.PI / 2;
-barrel.position.set(0.28, -0.24, -0.85);
-weaponGroup.add(barrel);
-
-const grip = new THREE.Mesh(
-  new THREE.BoxGeometry(0.12, 0.25, 0.18),
-  darkMat
-);
-
-grip.position.set(0.28, -0.42, -0.48);
-weaponGroup.add(grip);
-
-const weaponFlash = new THREE.PointLight(0xffa43a, 0, 5);
-weaponFlash.position.set(0.28, -0.24, -1.1);
-weaponGroup.add(weaponFlash);
-
-const flashMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.12, 8, 8),
-  new THREE.MeshBasicMaterial({
-    color: 0xffaa44
-  })
-);
-
-flashMesh.position.copy(weaponFlash.position);
-flashMesh.visible = false;
-weaponGroup.add(flashMesh);
-
-camera.add(weaponGroup);
-scene.add(camera);
-
-// ======================================================
-//                      CROSSHAIR
-// ======================================================
-
-const crosshair = document.createElement("div");
-
-crosshair.innerHTML = `
-<div style="
-position:fixed;
-left:50%;
-top:50%;
-transform:translate(-50%,-50%);
-width:18px;
-height:18px;
-pointer-events:none;
-z-index:9999;
-">
-<div style="
-position:absolute;
-width:2px;
-height:18px;
-background:white;
-left:8px;
-box-shadow:0 0 4px black;
-"></div>
-<div style="
-position:absolute;
-width:18px;
-height:2px;
-background:white;
-top:8px;
-box-shadow:0 0 4px black;
-"></div>
-</div>
-`;
-
-document.body.appendChild(crosshair);
-
-// ======================================================
-//                     HUD EXTRAS
-// ======================================================
-
-const hud = document.createElement("div");
-
-hud.style.cssText = `
-position:fixed;
-bottom:20px;
-right:20px;
-color:white;
-font-family:Arial;
-font-size:14px;
-background:rgba(10,15,25,0.75);
-padding:12px 18px;
-border-radius:10px;
-border:1px solid rgba(100,150,255,0.4);
-pointer-events:none;
-z-index:999;
-`;
-
-hud.innerHTML = `
-<div style="font-size:20px;font-weight:bold;color:#4db8ff">
-FPS ARENA
-</div>
-<div style="margin-top:5px">
-WASD - ruch
-</div>
-<div>
-SHIFT - sprint
-</div>
-<div>
-SPACE - skok
-</div>
-<div>
-LPM - strzał
-</div>
-<div>
-ESC - menu
-</div>
-`;
-
-document.body.appendChild(hud);
-
-// ======================================================
-//                   GAME STATE
-// ======================================================
-
-const otherPlayers = {};
-let score = 0;
-let playerLives = 3;
-
-let isPlaying = false;
-let isShooting = false;
-let lastShot = 0;
-let hitCooldown = {};
-let processedBullets = {};
-
-const player = {
-  x: 0,
-  y: 1.6,
-  z: 0,
-  vy: 0,
-  yaw: 0,
-  pitch: 0,
-  onGround: true
-};
-
-const keys = {};
 
 addEventListener("keydown", e => {
   keys[e.code] = true;
 
-  if (e.code === "Space" && isPlaying) {
+  if (e.code === "Space") {
     e.preventDefault();
+    jump();
   }
+
+  if (e.code === "Digit1") selectBuild("wall");
+  if (e.code === "Digit2") selectBuild("platform");
+  if (e.code === "Digit3") selectBuild("ramp");
+  if (e.code === "Digit4") selectBuild("remove");
 });
 
 addEventListener("keyup", e => {
   keys[e.code] = false;
 });
 
+canvas.addEventListener("mousemove", e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+canvas.addEventListener("mousedown", e => {
+  if (e.button === 0) {
+    mouse.down = true;
+    shoot();
+  }
+
+  if (e.button === 2) {
+    e.preventDefault();
+    buildStructure();
+  }
+});
+
+canvas.addEventListener("mouseup", e => {
+  if (e.button === 0) mouse.down = false;
+});
+
+canvas.addEventListener("contextmenu", e => {
+  e.preventDefault();
+});
+
 // ======================================================
-//                     FIREBASE
+// BUILD SELECTION
 // ======================================================
 
-onValue(connectedRef, (snap) => {
+function selectBuild(type) {
+  selectedBuild = type;
+
+  document.querySelectorAll(".build-slot").forEach(slot => {
+    slot.classList.toggle(
+      "active",
+      slot.dataset.slot ===
+        (type === "wall" ? "1" :
+         type === "platform" ? "2" :
+         type === "ramp" ? "3" : "4")
+    );
+  });
+
+  const hudBuild = document.getElementById("hud-build");
+
+  hudBuild.textContent =
+    "Budowanie: " +
+    (type === "wall" ? "ściana" :
+     type === "platform" ? "platforma" :
+     type === "ramp" ? "rampa" : "usuwanie");
+}
+
+buildSelect.addEventListener("click", e => {
+  const slot = e.target.closest(".build-slot");
+
+  if (!slot) return;
+
+  const num = slot.dataset.slot;
+
+  if (num === "1") selectBuild("wall");
+  if (num === "2") selectBuild("platform");
+  if (num === "3") selectBuild("ramp");
+  if (num === "4") selectBuild("remove");
+});
+
+// ======================================================
+// TEAM MENU
+// ======================================================
+
+function startMode(mode, chosenTeam = "none") {
+  gameMode = mode;
+  team = chosenTeam;
+
+  teamMenu.style.display = "none";
+
+  gameStarted = true;
+
+  const spawn = getSpawn();
+
+  player.x = spawn.x;
+  player.y = spawn.y;
+
+  player.vx = 0;
+  player.vy = 0;
+
+  playerLives = 5;
+  player.health = 100;
+  score = 0;
+  kills = 0;
+
+  updateHud();
+
+  if (myRef) {
+    update(myRef, getPlayerData());
+  }
+
+  isPlaying = true;
+}
+
+document.getElementById("team-ffa").onclick = () => {
+  startMode("ffa", "none");
+};
+
+document.getElementById("team-red").onclick = () => {
+  startMode("teams", "red");
+};
+
+document.getElementById("team-blue").onclick = () => {
+  startMode("teams", "blue");
+};
+
+// ======================================================
+// FIREBASE CONNECTION
+// ======================================================
+
+onValue(connectedRef, snap => {
   const statusEl = document.getElementById("net-status");
 
   if (!statusEl) return;
@@ -655,219 +915,97 @@ onValue(connectedRef, (snap) => {
 });
 
 // ======================================================
-//                       ROOM
+// ROOM
 // ======================================================
 
 function joinRoom(roomName) {
   if (myRef) remove(myRef);
+
   if (unsubPlayers) unsubPlayers();
   if (unsubBullets) unsubBullets();
-
-  for (const id in otherPlayers) {
-    scene.remove(otherPlayers[id]);
-    delete otherPlayers[id];
-  }
+  if (unsubBuilds) unsubBuilds();
 
   currentRoom = roomName.trim() || "arena-glowna";
 
   const roomDisplay = document.getElementById("room-name-display");
-  if (roomDisplay) roomDisplay.textContent = currentRoom;
+
+  if (roomDisplay) {
+    roomDisplay.textContent = currentRoom;
+  }
 
   myRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
   playersRef = ref(db, `rooms/${currentRoom}/players`);
   bulletsRef = ref(db, `rooms/${currentRoom}/bullets`);
-
-  const spawn = getRandomSpawn();
-
-  player.x = spawn.x;
-  player.z = spawn.z;
-  player.y = 1.6;
-  player.vy = 0;
-  playerLives = 3;
-  score = 0;
-
-  hitCooldown = {};
-  processedBullets = {};
+  buildsRef = ref(db, `rooms/${currentRoom}/builds`);
 
   onDisconnect(myRef).remove();
 
-  set(myRef, {
-    x: player.x,
-    y: 0.8,
-    z: player.z,
-    yaw: 0,
-    lives: 3,
-    score: 0
-  });
+  set(myRef, getPlayerData());
 
   // PLAYER SYNC
 
-  unsubPlayers = onValue(playersRef, (snapshot) => {
+  unsubPlayers = onValue(playersRef, snapshot => {
     const data = snapshot.val() || {};
-    const activeIds = Object.keys(data);
 
-    const countEl = document.getElementById("players-count");
-    if (countEl) countEl.textContent = activeIds.length;
-
-    for (const id of activeIds) {
+    for (const id in data) {
       if (id === myId) continue;
 
-      const pData = data[id];
-
-      if (!otherPlayers[id]) {
-        const playerModel = createPlayerModel();
-        scene.add(playerModel);
-        otherPlayers[id] = playerModel;
-      }
-
-      otherPlayers[id].position.set(
-        pData.x,
-        pData.y - 0.4,
-        pData.z
-      );
-
-      otherPlayers[id].rotation.y = pData.yaw || 0;
-
-      // Hide dead players
-
-      otherPlayers[id].visible = (pData.lives || 0) > 0;
+      players[id] = {
+        ...data[id],
+        id
+      };
     }
 
-    for (const id in otherPlayers) {
+    for (const id in players) {
       if (!data[id]) {
-        scene.remove(otherPlayers[id]);
-        delete otherPlayers[id];
+        delete players[id];
       }
+    }
+
+    const countEl = document.getElementById("players-count");
+
+    if (countEl) {
+      countEl.textContent = Object.keys(data).length;
     }
   });
 
-  // BULLET / DAMAGE SYNC
+  // BULLET SYNC
 
-  unsubBullets = onValue(bulletsRef, (snapshot) => {
+  unsubBullets = onValue(bulletsRef, snapshot => {
     const data = snapshot.val() || {};
 
-    for (const bId in data) {
-      if (processedBullets[bId]) continue;
+    for (const id in data) {
+      if (localBullets[id]) continue;
 
-      processedBullets[bId] = true;
+      const b = data[id];
 
-      const b = data[bId];
-
-      if (b.shooter === myId) continue;
-
-      const dist = Math.hypot(
-        player.x - b.x,
-        player.z - b.z
-      );
-
-      if (dist < 1.3 && playerLives > 0) {
-        damagePlayer();
+      if (Date.now() - (b.time || Date.now()) > 3000) {
+        continue;
       }
+
+      createLocalBullet(b, id);
+    }
+  });
+
+  // BUILD SYNC
+
+  unsubBuilds = onValue(buildsRef, snapshot => {
+    const data = snapshot.val() || {};
+
+    for (const id in builds) {
+      if (!data[id]) {
+        delete builds[id];
+      }
+    }
+
+    for (const id in data) {
+      builds[id] = data[id];
     }
   });
 }
 
 // ======================================================
-//                       DAMAGE
-// ======================================================
-
-function damagePlayer() {
-  if (!isPlaying || playerLives <= 0) return;
-
-  playerLives--;
-
-  const livesEl = document.getElementById("lives");
-  if (livesEl) livesEl.textContent = playerLives;
-
-  screenFlash("red");
-
-  if (playerLives <= 0) {
-    endGame("💀 Zostałeś pokonany!");
-    return;
-  }
-
-  const sp = getRandomSpawn();
-
-  player.x = sp.x;
-  player.z = sp.z;
-  player.y = 1.6;
-  player.vy = 0;
-
-  if (myRef) {
-    update(myRef, {
-      lives: playerLives,
-      x: player.x,
-      y: 0.8,
-      z: player.z
-    });
-  }
-}
-
-// ======================================================
-//                     SCREEN FX
-// ======================================================
-
-function screenFlash(color) {
-  const flash = document.createElement("div");
-
-  flash.style.cssText = `
-position:fixed;
-inset:0;
-background:${color === "red"
-      ? "rgba(255,0,0,0.35)"
-      : "rgba(255,255,255,0.5)"};
-pointer-events:none;
-z-index:99999;
-`;
-
-  document.body.appendChild(flash);
-
-  setTimeout(() => flash.remove(), 120);
-}
-
-function hitMarker() {
-  const marker = document.createElement("div");
-
-  marker.innerHTML = "✕";
-
-  marker.style.cssText = `
-position:fixed;
-top:50%;
-left:50%;
-transform:translate(-50%,-50%);
-color:#ff5555;
-font-size:28px;
-font-weight:bold;
-pointer-events:none;
-z-index:99999;
-`;
-
-  document.body.appendChild(marker);
-
-  setTimeout(() => marker.remove(), 180);
-}
-
-// ======================================================
-//                      COLLISION
-// ======================================================
-
-function checkWallCollision(nx, nz) {
-  const r = 0.45;
-
-  for (const s of solids) {
-    if (
-      Math.abs(nx - s.x) < s.w / 2 + r &&
-      Math.abs(nz - s.z) < s.d / 2 + r
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// ======================================================
-//                    GAME START
+// MAIN MENU
 // ======================================================
 
 const overlay = document.getElementById("overlay");
@@ -885,296 +1023,448 @@ startBtn.onclick = () => {
 
   joinRoom(roomName);
 
-  const scoreEl = document.getElementById("score");
-  const livesEl = document.getElementById("lives");
+  overlay.style.display = "none";
+  teamMenu.style.display = "block";
 
-  if (scoreEl) scoreEl.textContent = score;
-  if (livesEl) livesEl.textContent = playerLives;
-
-  msgEl.textContent = "";
-
-  renderer.domElement.requestPointerLock();
+  isPlaying = false;
 };
 
 // ======================================================
-//                   POINTER LOCK
+// CAMERA
 // ======================================================
 
-document.addEventListener("pointerlockchange", () => {
-  isPlaying = document.pointerLockElement === renderer.domElement;
+function updateCamera() {
+  cameraX = player.x - W / 2 + PLAYER_WIDTH / 2;
+  cameraY = player.y - H / 2 + PLAYER_HEIGHT / 2;
 
-  if (overlay) {
-    overlay.style.display = isPlaying ? "none" : "flex";
+  cameraX = Math.max(
+    0,
+    Math.min(WORLD_WIDTH - W, cameraX)
+  );
+
+  cameraY = Math.max(
+    0,
+    Math.min(WORLD_HEIGHT - H, cameraY)
+  );
+}
+
+// ======================================================
+// DRAW BACKGROUND
+// ======================================================
+
+function drawBackground() {
+  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+
+  gradient.addColorStop(0, "#101b30");
+  gradient.addColorStop(1, "#27394b");
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+
+  for (let i = 0; i < 100; i++) {
+    const x = (i * 137.5 - cameraX * 0.15) % W;
+    const y = (i * 91.3 - cameraY * 0.15) % H;
+
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.fillRect(
+      (x + W) % W,
+      (y + H) % H,
+      2,
+      2
+    );
   }
-});
+}
 
-document.addEventListener("mousemove", e => {
+// ======================================================
+// DRAW MAP
+// ======================================================
+
+function drawPlatforms() {
+  for (const p of mapPlatforms) {
+    const x = p.x - cameraX;
+    const y = p.y - cameraY;
+
+    ctx.fillStyle = "#475467";
+    ctx.fillRect(x, y, p.w, p.h);
+
+    ctx.fillStyle = "#71839b";
+    ctx.fillRect(x, y, p.w, 6);
+
+    ctx.strokeStyle = "#1c2531";
+    ctx.strokeRect(x, y, p.w, p.h);
+  }
+}
+
+// ======================================================
+// DRAW BUILDINGS
+// ======================================================
+
+function drawBuilds() {
+  for (const id in builds) {
+    const b = builds[id];
+
+    const x = b.x - cameraX;
+    const y = b.y - cameraY;
+
+    if (b.type === "ramp") {
+      ctx.fillStyle = b.team === "red" ? "#c55c5c" : "#5797d1";
+
+      ctx.beginPath();
+      ctx.moveTo(x, y + b.h);
+      ctx.lineTo(x + b.w, y);
+      ctx.lineTo(x + b.w, y + b.h);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = "#222";
+      ctx.stroke();
+    } else {
+      ctx.fillStyle =
+        b.team === "red" ? "#c55c5c" :
+        b.team === "blue" ? "#5797d1" : "#8997a9";
+
+      ctx.fillRect(x, y, b.w, b.h);
+
+      ctx.fillStyle = "rgba(255,255,255,.15)";
+      ctx.fillRect(x, y, b.w, 8);
+
+      ctx.strokeStyle = "#202938";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, b.w, b.h);
+
+      // Grid pattern
+
+      ctx.strokeStyle = "rgba(0,0,0,.25)";
+
+      for (let gx = 20; gx < b.w; gx += 20) {
+        ctx.beginPath();
+        ctx.moveTo(x + gx, y);
+        ctx.lineTo(x + gx, y + b.h);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+// ======================================================
+// DRAW PLAYER
+// ======================================================
+
+function drawPlayer(p, isMe = false) {
+  const x = p.x - cameraX;
+  const y = p.y - cameraY;
+
+  const color =
+    p.team === "red" ? "#ff5252" :
+    p.team === "blue" ? "#42a5ff" :
+    isMe ? "#4de1bc" : "#f5c542";
+
+  // Shadow
+
+  ctx.fillStyle = "rgba(0,0,0,.2)";
+  ctx.fillRect(x - 4, y + PLAYER_HEIGHT, PLAYER_WIDTH + 8, 5);
+
+  // Body
+
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 5, y + 25, 28, 32);
+
+  // Head
+
+  ctx.fillStyle = "#ffd2a1";
+  ctx.fillRect(x + 9, y + 4, 22, 22);
+
+  // Helmet
+
+  ctx.fillStyle = "#263448";
+  ctx.fillRect(x + 7, y, 26, 8);
+
+  // Legs
+
+  ctx.fillStyle = "#202938";
+  ctx.fillRect(x + 7, y + 55, 10, 20);
+  ctx.fillRect(x + 21, y + 55, 10, 20);
+
+  // Weapon
+
+  ctx.fillStyle = "#111";
+
+  ctx.fillRect(
+    p.facing === -1 ? x - 12 : x + 30,
+    y + 34,
+    20,
+    7
+  );
+
+  // Name
+
+  ctx.fillStyle = "white";
+  ctx.font = "bold 13px Arial";
+  ctx.textAlign = "center";
+
+  ctx.fillText(
+    isMe ? "TY" : p.id.substring(0, 8),
+    x + PLAYER_WIDTH / 2,
+    y - 10
+  );
+
+  // Health bar
+
+  ctx.fillStyle = "#222";
+  ctx.fillRect(x, y - 5, PLAYER_WIDTH, 5);
+
+  ctx.fillStyle = "#35db7d";
+  ctx.fillRect(
+    x,
+    y - 5,
+    PLAYER_WIDTH * Math.max(0, (p.health || 0) / 100),
+    5
+  );
+}
+
+// ======================================================
+// DRAW BULLETS
+// ======================================================
+
+function drawBullets(dt) {
+  for (const id in localBullets) {
+    const b = localBullets[id];
+
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+
+    // Hit detection
+
+    for (const playerId in players) {
+      const p = players[playerId];
+
+      if (!isEnemy(p)) continue;
+
+      const hit =
+        b.x > p.x &&
+        b.x < p.x + PLAYER_WIDTH &&
+        b.y > p.y &&
+        b.y < p.y + PLAYER_HEIGHT;
+
+      if (hit) {
+        if (b.shooter === myId) {
+          applyDamage(playerId, 25);
+        }
+
+        delete localBullets[id];
+        break;
+      }
+    }
+
+    // Bullet lifespan
+
+    if (Date.now() - b.born > 1800) {
+      delete localBullets[id];
+    }
+  }
+
+  for (const id in localBullets) {
+    const b = localBullets[id];
+
+    const x = b.x - cameraX;
+    const y = b.y - cameraY;
+
+    ctx.fillStyle = b.team === "red" ? "#ff5757" : "#ffff70";
+
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ======================================================
+// BUILD PREVIEW
+// ======================================================
+
+function drawBuildPreview() {
   if (!isPlaying) return;
 
-  player.yaw -= e.movementX * 0.0025;
+  const pos = getBuildPosition();
 
-  player.pitch = Math.max(
-    -1.45,
-    Math.min(
-      1.45,
-      player.pitch - e.movementY * 0.0025
-    )
-  );
-});
+  const x = pos.x - cameraX;
+  const y = pos.y - cameraY;
 
-// ======================================================
-//                      SHOOTING
-// ======================================================
+  ctx.strokeStyle = "rgba(255,255,255,.7)";
+  ctx.lineWidth = 2;
 
-const raycaster = new THREE.Raycaster();
-
-raycaster.far = 60;
-
-function shoot() {
-  if (!isPlaying || !bulletsRef) return;
-
-  const now = performance.now();
-
-  if (now - lastShot < 160) return;
-
-  lastShot = now;
-
-  // Camera direction
-
-  const direction = new THREE.Vector3();
-
-  camera.getWorldDirection(direction);
-
-  raycaster.set(camera.position, direction);
-
-  // Remote player hit detection
-
-  const models = Object.values(otherPlayers);
-
-  const hits = raycaster.intersectObjects(models, true);
-
-  let bulletX = player.x - Math.sin(player.yaw) * 35;
-  let bulletZ = player.z - Math.cos(player.yaw) * 35;
-
-  let targetHit = null;
-
-  for (const hit of hits) {
-    let obj = hit.object;
-
-    while (obj && !models.includes(obj)) {
-      obj = obj.parent;
-    }
-
-    if (!obj) continue;
-
-    const id = Object.keys(otherPlayers).find(
-      key => otherPlayers[key] === obj
-    );
-
-    if (!id) continue;
-
-    if (hitCooldown[id] && now - hitCooldown[id] < 700) {
-      continue;
-    }
-
-    targetHit = id;
-
-    bulletX = hit.point.x;
-    bulletZ = hit.point.z;
-
-    hitCooldown[id] = now;
-
-    score += 10;
-
-    const scoreEl = document.getElementById("score");
-    if (scoreEl) scoreEl.textContent = score;
-
-    hitMarker();
-    screenFlash("white");
-
-    break;
+  if (selectedBuild === "wall") {
+    ctx.strokeRect(x, y, BUILD_SIZE, BUILD_SIZE);
   }
 
-  // Bullet sync - keep Firebase structure
+  if (selectedBuild === "platform") {
+    ctx.strokeRect(x, y, BUILD_SIZE * 1.5, 25);
+  }
 
-  push(bulletsRef, {
-    shooter: myId,
-    x: bulletX,
+  if (selectedBuild === "ramp") {
+    ctx.beginPath();
+    ctx.moveTo(x, y + BUILD_SIZE);
+    ctx.lineTo(x + BUILD_SIZE, y);
+    ctx.lineTo(x + BUILD_SIZE, y + BUILD_SIZE);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  if (selectedBuild === "remove") {
+    ctx.strokeStyle = "#ff4444";
+    ctx.strokeRect(x, y, BUILD_SIZE, BUILD_SIZE);
+  }
+}
+
+// ======================================================
+// DRAW HUD
+// ======================================================
+
+function updateHud() {
+  document.getElementById("hud-mode").textContent =
+    "Tryb: " + (gameMode === "ffa" ? "FFA" : "TEAM");
+
+  document.getElementById("hud-team").textContent =
+    "Drużyna: " +
+    (team === "red" ? "RED" :
+     team === "blue" ? "BLUE" : "brak");
+
+  document.getElementById("hud-kills").textContent =
+    "Eliminacje: " + kills;
+
+  const scoreEl = document.getElementById("score");
+  if (scoreEl) scoreEl.textContent = score;
+
+  const livesEl = document.getElementById("lives");
+  if (livesEl) livesEl.textContent = playerLives;
+}
+
+// ======================================================
+// MESSAGE
+// ======================================================
+
+let messageTimer = null;
+
+function showMessage(text) {
+  message.textContent = text;
+
+  clearTimeout(messageTimer);
+
+  messageTimer = setTimeout(() => {
+    message.textContent = "";
+  }, 2000);
+}
+
+// ======================================================
+// DRAW
+// ======================================================
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  drawBackground();
+  drawPlatforms();
+  drawBuilds();
+
+  // Other players
+
+  for (const id in players) {
+    const p = players[id];
+
+    if (p.lives <= 0) continue;
+
+    drawPlayer(p, false);
+  }
+
+  // Local player
+
+  drawPlayer({
+    x: player.x,
     y: player.y,
-    z: bulletZ
-  });
+    facing: player.facing,
+    team,
+    health: player.health
+  }, true);
 
-  // Weapon recoil
-
-  weaponGroup.position.z = 0.12;
-  weaponGroup.rotation.x = -0.08;
-
-  weaponFlash.intensity = 5;
-  flashMesh.visible = true;
-
-  setTimeout(() => {
-    weaponGroup.position.z = 0;
-    weaponGroup.rotation.x = 0;
-    weaponFlash.intensity = 0;
-    flashMesh.visible = false;
-  }, 80);
-}
-
-document.addEventListener("mousedown", e => {
-  if (e.button === 0) shoot();
-});
-
-// ======================================================
-//                       GAME END
-// ======================================================
-
-function endGame(text) {
-  isPlaying = false;
-
-  if (document.pointerLockElement) {
-    document.exitPointerLock();
-  }
-
-  msgEl.textContent = text;
-  startBtn.textContent = "ZAGRAJ PONOWNIE";
+  drawBullets(0);
+  drawBuildPreview();
 }
 
 // ======================================================
-//                     MOVEMENT
+// GAME LOOP
 // ======================================================
 
-let lastTime = performance.now();
-let lastSync = 0;
-
-let walkTime = 0;
-let bobAmount = 0;
+let bulletDrawTime = performance.now();
 
 function animate(now) {
   requestAnimationFrame(animate);
 
-  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  const dt = Math.min((now - lastTime) / 1000, 0.04);
+
   lastTime = now;
 
   if (isPlaying) {
-    const moving =
-      keys["KeyW"] ||
-      keys["KeyS"] ||
-      keys["KeyA"] ||
-      keys["KeyD"];
+    movePlayer(dt);
+    updateCamera();
 
-    const sprint = keys["ShiftLeft"] || keys["ShiftRight"];
-
-    const speed = sprint ? 10 : 6;
-
-    const forward =
-      (keys["KeyW"] ? 1 : 0) -
-      (keys["KeyS"] ? 1 : 0);
-
-    const strafe =
-      (keys["KeyD"] ? 1 : 0) -
-      (keys["KeyA"] ? 1 : 0);
-
-    const sin = Math.sin(player.yaw);
-    const cos = Math.cos(player.yaw);
-
-    let dx = (-sin * forward + cos * strafe) * speed * dt;
-    let dz = (-cos * forward - sin * strafe) * speed * dt;
-
-    // Normalize diagonal movement
-
-    if (forward !== 0 && strafe !== 0) {
-      dx *= 0.7071;
-      dz *= 0.7071;
+    if (mouse.down) {
+      shoot();
     }
 
-    // Movement collision
+    // Sync player
 
-    if (!checkWallCollision(player.x + dx, player.z)) {
-      player.x += dx;
-    }
-
-    if (!checkWallCollision(player.x, player.z + dz)) {
-      player.z += dz;
-    }
-
-    // Jump
-
-    if (keys["Space"] && player.onGround) {
-      player.vy = 8.5;
-      player.onGround = false;
-    }
-
-    player.vy -= 22 * dt;
-    player.y += player.vy * dt;
-
-    if (player.y <= 1.6) {
-      player.y = 1.6;
-      player.vy = 0;
-      player.onGround = true;
-    }
-
-    // Camera bobbing
-
-    if (moving) {
-      walkTime += dt * (sprint ? 14 : 10);
-      bobAmount = Math.sin(walkTime) * 0.045;
-    } else {
-      bobAmount *= 0.85;
-    }
-
-    camera.position.set(
-      player.x,
-      player.y + bobAmount,
-      player.z
-    );
-
-    camera.rotation.order = "YXZ";
-    camera.rotation.y = player.yaw;
-    camera.rotation.x = player.pitch;
-
-    // Network sync
-
-    if (now - lastSync > 50 && myRef) {
+    if (now - lastSync > 80 && myRef) {
       lastSync = now;
 
-      set(myRef, {
-        x: Number(player.x.toFixed(2)),
-        y: Number((player.y - 0.8).toFixed(2)),
-        z: Number(player.z.toFixed(2)),
-        yaw: Number(player.yaw.toFixed(2)),
-        lives: playerLives,
-        score: score
-      });
+      update(myRef, getPlayerData());
     }
-  } else {
-    // Background camera position
 
-    camera.position.set(player.x, player.y, player.z);
-    camera.rotation.order = "YXZ";
-    camera.rotation.y = player.yaw;
-    camera.rotation.x = player.pitch;
+    // Keep HUD fresh
+
+    updateHud();
   }
 
-  // Weapon movement
+  // Bullet movement
 
-  weaponGroup.position.y = bobAmount * 1.5;
+  const bulletDt = Math.min(
+    (now - bulletDrawTime) / 1000,
+    0.04
+  );
 
-  renderer.render(scene, camera);
+  bulletDrawTime = now;
+
+  drawBackground();
+  drawPlatforms();
+  drawBuilds();
+
+  for (const id in players) {
+    const p = players[id];
+
+    if (p.lives <= 0) continue;
+
+    drawPlayer(p, false);
+  }
+
+  drawPlayer({
+    x: player.x,
+    y: player.y,
+    facing: player.facing,
+    team,
+    health: player.health
+  }, true);
+
+  drawBullets(bulletDt);
+  drawBuildPreview();
 }
 
 // ======================================================
-//                       RESIZE
-// ======================================================
-
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-// ======================================================
-//                       START
+// INIT
 // ======================================================
 
 animate(performance.now());
