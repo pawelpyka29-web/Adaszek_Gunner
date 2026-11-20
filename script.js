@@ -4,7 +4,8 @@ import {
   ref,
   set,
   onValue,
-  onDisconnect
+  onDisconnect,
+  remove
 } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -20,10 +21,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app); 
 
-// Unikalne ID gracza
 const myId = "player_" + Math.random().toString(36).substring(2, 9);
-const myRef = ref(db, "players/" + myId);
-const playersRef = ref(db, "players");
+let currentRoom = "ogolny";
+let myRef = null;
+let playersRef = null;
+let unsubPlayers = null;
+
 const connectedRef = ref(db, ".info/connected");
 
 // --- SCENA THREE.JS ---
@@ -59,14 +62,12 @@ function block(x, y, z, w, h, d, material, collide = true) {
   return m;
 }
 
-// Podłoga i ściany zewnętrzne
 block(0, -0.55, 0, 48, 1, 48, floorMat, false);
 block(0, 1, -24, 48, 3, 1, wallMat);
 block(0, 1, 24, 48, 3, 1, wallMat);
 block(-24, 1, 0, 1, 3, 48, wallMat);
 block(24, 1, 0, 1, 3, 48, wallMat);
 
-// Ściany labiryntu
 [
   [-12, 0, 1, 28], [-3, -10, 18, 1], [7, -2, 1, 25], [15, 10, 18, 1],
   [-14, 15, 15, 1], [-18, -12, 1, 14], [-8, 7, 1, 13], [0, 18, 1, 10],
@@ -82,7 +83,7 @@ for (let i = 0; i < 18; i++) {
   scene.add(p);
 }
 
-// --- SYNCHRONIZACJA Z FIREBASE ---
+// --- ZARZĄDZANIE POKOJAMI I FIREBASE ---
 const otherPlayers = {};
 const otherMat = mat(0xff9800);
 
@@ -91,40 +92,64 @@ onValue(connectedRef, (snap) => {
   if (snap.val() === true) {
     statusEl.textContent = 'Online';
     statusEl.style.color = '#36c5a1';
-    onDisconnect(myRef).remove();
-    set(myRef, { x: 0, y: 0.8, z: 0, yaw: 0 });
   } else {
     statusEl.textContent = 'Rozłączono';
     statusEl.style.color = '#ff7474';
   }
 });
 
-onValue(playersRef, (snapshot) => {
-  const data = snapshot.val() || {};
-  const activeIds = Object.keys(data);
-  const countEl = document.getElementById('players-count');
-  if (countEl) countEl.textContent = activeIds.length;
-
-  for (const id of activeIds) {
-    if (id === myId) continue;
-    const pData = data[id];
-    if (!otherPlayers[id]) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), otherMat);
-      mesh.castShadow = true;
-      scene.add(mesh);
-      otherPlayers[id] = mesh;
-    }
-    otherPlayers[id].position.set(pData.x, pData.y, pData.z);
-    otherPlayers[id].rotation.y = pData.yaw || 0;
+function joinRoom(roomName) {
+  // Jeśli gracz był już w jakimś pokoju, usuń starego mesha i listenera
+  if (myRef) {
+    remove(myRef);
+  }
+  if (unsubPlayers) {
+    unsubPlayers();
   }
 
+  // Wyczyść starych graczy z widoku
   for (const id in otherPlayers) {
-    if (!data[id]) {
-      scene.remove(otherPlayers[id]);
-      delete otherPlayers[id];
-    }
+    scene.remove(otherPlayers[id]);
+    delete otherPlayers[id];
   }
-});
+
+  currentRoom = roomName.trim() || "ogolny";
+  document.getElementById('room-name-display').textContent = currentRoom;
+
+  myRef = ref(db, `rooms/${currentRoom}/players/${myId}`);
+  playersRef = ref(db, `rooms/${currentRoom}/players`);
+
+  onDisconnect(myRef).remove();
+  set(myRef, { x: 0, y: 0.8, z: 0, yaw: 0 });
+
+  // Nasłuchuj graczy TYLKO w wybranym pokoju
+  unsubPlayers = onValue(playersRef, (snapshot) => {
+    const data = snapshot.val() || {};
+    const activeIds = Object.keys(data);
+    const countEl = document.getElementById('players-count');
+    if (countEl) countEl.textContent = activeIds.length;
+
+    for (const id of activeIds) {
+      if (id === myId) continue;
+      const pData = data[id];
+      if (!otherPlayers[id]) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.8), otherMat);
+        mesh.castShadow = true;
+        scene.add(mesh);
+        otherPlayers[id] = mesh;
+      }
+      otherPlayers[id].position.set(pData.x, pData.y, pData.z);
+      otherPlayers[id].rotation.y = pData.yaw || 0;
+    }
+
+    for (const id in otherPlayers) {
+      if (!data[id]) {
+        scene.remove(otherPlayers[id]);
+        delete otherPlayers[id];
+      }
+    }
+  });
+}
 
 // --- KRYSZTAŁY I STRAŻNICY ---
 const crystals = [];
@@ -167,9 +192,17 @@ addEventListener('keyup', e => keys[e.code] = false);
 
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('start');
+const roomInput = document.getElementById('room-input');
 const msgEl = document.getElementById('message');
 
 startBtn.onclick = () => {
+  const roomName = roomInput.value.trim();
+  if (!roomName) {
+    alert('Wpisz nazwę pokoju!');
+    return;
+  }
+  
+  joinRoom(roomName);
   if (lives <= 0 || score === crystals.length) resetGame();
   renderer.domElement.requestPointerLock();
 };
@@ -243,7 +276,7 @@ function animate(now) {
       player.onGround = true;
     }
 
-    if (now - lastSync > 50) {
+    if (now - lastSync > 50 && myRef) {
       lastSync = now;
       set(myRef, {
         x: Number(player.x.toFixed(2)),
