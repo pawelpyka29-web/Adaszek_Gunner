@@ -35,8 +35,8 @@ const connectedRef = ref(db, ".info/connected");
 
 // --- SCENA THREE.JS (ZAMEK ARENA) ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x283142);
-scene.fog = new THREE.Fog(0x283142, 15, 60);
+scene.background = new THREE.Color(0x1a1c23);
+scene.fog = new THREE.Fog(0x1a1c23, 15, 65);
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 100);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -53,7 +53,7 @@ sun.castShadow = true;
 scene.add(sun);
 
 const mat = (color, roughness = 0.7) => new THREE.MeshStandardMaterial({ color, roughness });
-const floorMat = mat(0x3d4452), wallMat = mat(0x525c6e), stoneMat = mat(0x6b778d);
+const floorMat = mat(0x2c323d), wallMat = mat(0x404859), stoneMat = mat(0x525c6e);
 const solids = [];
 
 function block(x, y, z, w, h, d, material, collide = true) {
@@ -70,22 +70,22 @@ function block(x, y, z, w, h, d, material, collide = true) {
 block(0, -0.5, 0, 40, 1, 40, floorMat, false);
 
 // Mury zamkowe zewnętrzne
-block(0, 2, -20, 40, 5, 1, wallMat);
-block(0, 2, 20, 40, 5, 1, wallMat);
-block(-20, 2, 0, 1, 5, 40, wallMat);
-block(20, 2, 0, 1, 5, 40, wallMat);
+block(0, 3, -20, 40, 6, 1, wallMat);
+block(0, 3, 20, 40, 6, 1, wallMat);
+block(-20, 3, 0, 1, 6, 40, wallMat);
+block(20, 3, 0, 1, 6, 40, wallMat);
 
-// Filarowe przeszkody / wieże na terenie zamku
+// Filarowe przeszkody i murki wewnątrz zamku (zastąpiły stary labirynt)
 [
   [-10, -10, 4, 4], [10, -10, 4, 4], [-10, 10, 4, 4], [10, 10, 4, 4],
-  [0, -12, 6, 2], [0, 12, 6, 2], [-12, 0, 2, 6], [12, 0, 2, 6]
-].forEach(([x, z, w, d]) => block(x, 1.5, z, w, 4, d, stoneMat));
+  [0, -10, 8, 2], [0, 10, 8, 2], [-10, 0, 2, 8], [10, 0, 2, 8]
+].forEach(([x, z, w, d]) => block(x, 2, z, w, 4, d, stoneMat));
 
-// Punkty losowego respawnu na arenie
+// Punkty losowego respawnu na arenie zamkowej
 const spawnPoints = [
   { x: -15, z: -15 }, { x: 15, z: -15 },
   { x: -15, z: 15 }, { x: 15, z: 15 },
-  { x: 0, z: -15 }, { x: 0, z: 15 }
+  { x: 0, z: -12 }, { x: 0, z: 12 }
 ];
 
 function getRandomSpawn() {
@@ -133,7 +133,6 @@ function joinRoom(roomName) {
   onDisconnect(myRef).remove();
   set(myRef, { x: player.x, y: 0.8, z: player.z, yaw: 0, lives: 3, score: 0 });
 
-  // Nasłuchiwanie graczy w pokoju
   unsubPlayers = onValue(playersRef, (snapshot) => {
     const data = snapshot.val() || {};
     const activeIds = Object.keys(data);
@@ -160,16 +159,13 @@ function joinRoom(roomName) {
     }
   });
 
-  // Nasłuchiwanie strzałów (pocisków)
   unsubBullets = onValue(bulletsRef, (snapshot) => {
     const data = snapshot.val() || {};
     for (const bId in data) {
       const b = data[bId];
-      // Sprawdź czy pocisk kogoś trafił (jeśli to nie mój pocisk)
       if (b.shooter !== myId) {
         const dist = Math.hypot(player.x - b.x, player.z - b.z);
-        if (dist < 0.9 && player.lives > 0) {
-          // Trafienie! Tracisz życie i respawn w losowym miejscu
+        if (dist < 1.0 && player.lives > 0) {
           player.lives--;
           document.getElementById('lives').textContent = player.lives;
           const sp = getRandomSpawn();
@@ -179,7 +175,7 @@ function joinRoom(roomName) {
           update(myRef, { lives: player.lives, x: player.x, z: player.z });
 
           if (player.lives <= 0) {
-            endGame('💀 Zostałeś pokonany na arenie!');
+            endGame('💀 Zostałeś pokonany na zamku!');
           }
         }
       }
@@ -227,14 +223,11 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mousedown', () => {
   if (!isPlaying || !bulletsRef) return;
   
-  // Stwórz pocisk w bazie Firebase
   const bulletData = {
     shooter: myId,
     x: player.x - Math.sin(player.yaw) * 1.5,
     y: player.y,
-    z: player.z - Math.cos(player.yaw) * 1.5,
-    dx: -Math.sin(player.yaw) * 15,
-    dz: -Math.cos(player.yaw) * 15
+    z: player.z - Math.cos(player.yaw) * 1.5
   };
   push(bulletsRef, bulletData);
 });
