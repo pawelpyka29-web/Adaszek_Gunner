@@ -3,26 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kryształowy Labirynt 3D - Pokoje Firebase</title>
+<title>Zamek Arena 3D - Multiplayer PvP</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="hud">
   🏠 Pokój: <span id="room-name-display" style="color:#62a5ff">-</span><br>
-  💎 Kryształy: <span id="score">0</span>/8<br>
+  💀 Zabójstwa (Fragi): <span id="score">0</span><br>
   ❤️ Życia: <span id="lives">3</span><br>
   🌐 Firebase: <span id="net-status" style="color:#ffeb3b">Łączenie...</span><br>
-  👥 Gracze w pokoju: <span id="players-count">1</span>
+  👥 Gracze online: <span id="players-count">1</span>
 </div>
-<div id="help" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:2;background:#101827cc;padding:10px 16px;border-radius:10px;text-align:center;font-size:14px;white-space:nowrap;">WASD – ruch · Mysz – rozglądanie · Spacja – skok · Shift – sprint · ESC – pauza</div>
+<div id="help" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:2;background:#101827cc;padding:10px 16px;border-radius:10px;text-align:center;font-size:14px;white-space:nowrap;">WASD – ruch · Mysz – celowanie · Kliknięcie – strzał · Spacja – skok · Shift – sprint</div>
 
 <div id="overlay">
   <div class="container" id="panel">
-    <h1>Kryształowy Labirynt 3D</h1>
-    <p style="color: #d5deeb; line-height: 1.5; margin-bottom: 15px;">Wpisz nazwę pokoju, aby dołączyć do znajomych:</p>
+    <h1>Zamek Arena 3D</h1>
+    <p style="color: #d5deeb; line-height: 1.5; margin-bottom: 15px;">Wpisz nazwę pokoju, wejdź na arenę i strzelaj do innych graczy!</p>
     
-    <input type="text" id="room-input" placeholder="Nazwa pokoju (np. moj-pokoj)" value="ogolny">
-    <button id="start">WEJDŹ DO GRY</button>
+    <input type="text" id="room-input" placeholder="Nazwa pokoju (np. arena1)" value="arena-glowna">
+    <button id="start">WEJDŹ NA ARENĘ</button>
     <p id="message"></p>
   </div>
 </div>
