@@ -121,6 +121,7 @@ playButton.addEventListener("click", async () => {
     try {
         await startGame();
     } catch (err) {
+        console.log("1. GAME.JS DZIAŁA");
         console.error(err);
         alert("Błąd Firebase: " + err.message);
 
