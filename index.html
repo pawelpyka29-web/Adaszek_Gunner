@@ -1,33 +1,77 @@
+
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zamek Arena 3D - Multiplayer PvP</title>
-<link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Strike</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="hud">
-  🏠 Pokój: <span id="room-name-display" style="color:#62a5ff">-</span><br>
-  💀 Zabójstwa (Fragi): <span id="score">0</span><br>
-  ❤️ Życia: <span id="lives">3</span><br>
-  🌐 Firebase: <span id="net-status" style="color:#ffeb3b">Łączenie...</span><br>
-  👥 Gracze online: <span id="players-count">1</span>
-</div>
-<div id="help" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:2;background:#101827cc;padding:10px 16px;border-radius:10px;text-align:center;font-size:14px;white-space:nowrap;">WASD – ruch · Mysz – celowanie · Kliknięcie – strzał · Spacja – skok · Shift – sprint</div>
+    <div id="menu">
+        <div class="panel">
+            <div class="logo">NEON<span>STRIKE</span></div>
+            <p class="subtitle">MULTIPLAYER ARENA</p>
 
-<div id="overlay">
-  <div class="container" id="panel">
-    <h1>Zamek Arena 3D</h1>
-    <p style="color: #d5deeb; line-height: 1.5; margin-bottom: 15px;">Wpisz nazwę pokoju, wejdź na arenę i strzelaj do innych graczy!</p>
-    
-    <input type="text" id="room-input" placeholder="Nazwa pokoju (np. arena1)" value="arena-glowna">
-    <button id="start">WEJDŹ NA ARENĘ</button>
-    <p id="message"></p>
-  </div>
-</div>
+            <input id="nickname" maxlength="16" placeholder="Twój nick" value="Player">
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script type="module" src="script.js"></script>
+            <input id="room" maxlength="20" placeholder="Nazwa pokoju" value="arena1">
+
+            <button id="play">GRAJ</button>
+
+            <p class="hint">
+                WASD – ruch | SHIFT – sprint | SPACE – skok<br>
+                LPM – strzał | ESC – wyjście z myszki
+            </p>
+        </div>
+    </div>
+
+    <div id="hud" class="hidden">
+        <div class="topbar">
+            <div class="brand">NEON<span>STRIKE</span></div>
+            <div id="roomInfo">ARENA</div>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <span>KILLS</span>
+                <strong id="kills">0</strong>
+            </div>
+            <div class="stat">
+                <span>DEATHS</span>
+                <strong id="deaths">0</strong>
+            </div>
+            <div class="stat">
+                <span>HP</span>
+                <strong id="health">100</strong>
+            </div>
+        </div>
+
+        <div id="leaderboard">
+            <h3>TOP GRACZE</h3>
+            <div id="leaderboardList"></div>
+        </div>
+
+        <div id="killfeed"></div>
+
+        <div id="crosshair">
+            <span></span><span></span><span></span><span></span>
+        </div>
+
+        <div id="hitmarker">✕</div>
+
+        <div id="respawn" class="hidden">
+            <h1>ZGINĄŁEŚ</h1>
+            <p>Odradzanie...</p>
+        </div>
+
+        <div id="lockMessage">
+            Kliknij ekran, aby odzyskać sterowanie
+        </div>
+    </div>
+
+    <div id="loading">ŁADOWANIE ARENY...</div>
+
+    <script type="module" src="game.js"></script>
 </body>
 </html>
