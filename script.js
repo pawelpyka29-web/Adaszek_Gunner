@@ -1,5 +1,10 @@
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+import {
+    initializeApp
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+
 import {
     getDatabase,
     ref,
@@ -9,23 +14,23 @@ import {
     onDisconnect,
     remove,
     get
-} from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 // ======================================================
-// FIREBASE - ZACHOWANA KONFIGURACJA
+// FIREBASE - UZUPEŁNIJ SWOJE DANE
 // ======================================================
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCanH2BBs2Up7BtN1AXQ1uyQd6YsmthT0w",
-  authDomain: "pandixif-multiplayer.firebaseapp.com",
-  databaseURL: "https://pandixif-multiplayer-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "pandixif-multiplayer",
-  storageBucket: "pandixif-multiplayer.firebasestorage.app",
-  messagingSenderId: "226124925060",
-  appId: "1:124924925060:web:c414a82236e554deb7dad1"
+     apiKey: "AIzaSyCanH2BBs2Up7BtN1AXQ1uyQd6YsmthT0w",
+     authDomain: "pandixif-multiplayer.firebaseapp.com",
+     databaseURL: "https://pandixif-multiplayer-default-rtdb.europe-west1.firebasedatabase.app",
+     projectId: "pandixif-multiplayer",
+     storageBucket: "pandixif-multiplayer.firebasestorage.app",
+     messagingSenderId: "226124925060",
+     appId: "1:226124925060:web:c414a82236e554deb7dad1",
+     measurementId: "G-8R64FCKHGQ"
 };
 
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
@@ -912,5 +917,4 @@ window.addEventListener("beforeunload", () => {
         remove(myRef);
     }
 });
-
 
