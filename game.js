@@ -12,11 +12,12 @@ import {
     onValue,
     onDisconnect,
     remove,
-    get
+    get,
+    push
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 // ======================================================
-// FIREBASE - KONFIGURACJA
+// FIREBASE - KONFIGURACJA (NIERUSZANA)
 // ======================================================
 
 const firebaseConfig = {
@@ -34,7 +35,7 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ======================================================
-// USTAWIENIA GRY
+// USTAWIENIA GRY I BRONI
 // ======================================================
 
 let scene, camera, renderer;
@@ -46,6 +47,7 @@ let myId = crypto.randomUUID();
 let myName = "Player";
 let roomName = "arena1";
 let myRef;
+let bulletsRef;
 
 let playing = false;
 let dead = false;
@@ -59,7 +61,16 @@ let lastShot = 0;
 let lastSync = 0;
 let lastHitmarker = 0;
 
+// System wyboru broni
+const weapons = {
+    1: { name: "Pistolet", fireRate: 250, damage: 35, headDamage: 80, speed: 60, count: 1, spread: 0 },
+    2: { name: "Karabin", fireRate: 120, damage: 20, headDamage: 45, speed: 70, count: 1, spread: 0.02 },
+    3: { name: "Strzelba", fireRate: 700, damage: 15, headDamage: 30, speed: 50, count: 4, spread: 0.1 }
+};
+let currentWeaponKey = 1;
+
 const remoteMeshes = {};
+const activeProjectiles = []; // Lokalne pociski 3D
 const keys = {};
 const obstacles = [];
 
@@ -68,22 +79,14 @@ const SPRINT_SPEED = 13;
 const JUMP = 8;
 const GRAVITY = 22;
 const MAX_HEALTH = 100;
-const FIRE_RATE = 170;
-const DAMAGE = 35;
-const HEAD_DAMAGE = 100;
 
 const PLAYER_HEIGHT = 1.8;
 const PLAYER_RADIUS = 0.4;
 
 const spawnPoints = [
-    [0, 1, 0],
-    [10, 1, 10],
-    [-10, 1, 10],
-    [10, 1, -10],
-    [-10, 1, -10],
-    [0, 1, 15],
-    [15, 1, 0],
-    [-15, 1, 0]
+    [0, 1, 0], [10, 1, 10], [-10, 1, 10],
+    [10, 1, -10], [-10, 1, -10], [0, 1, 15],
+    [15, 1, 0], [-15, 1, 0]
 ];
 
 const menu = document.getElementById("menu");
@@ -101,7 +104,7 @@ const hitmarkerUI = document.getElementById("hitmarker");
 const lockMessage = document.getElementById("lockMessage");
 
 // ======================================================
-// START
+// START GRY
 // ======================================================
 
 playButton.addEventListener("click", async () => {
@@ -125,9 +128,9 @@ playButton.addEventListener("click", async () => {
 
 async function startGame() {
     myRef = ref(db, `rooms/${roomName}/players/${myId}`);
+    bulletsRef = ref(db, `rooms/${roomName}/projectiles`);
 
     const existing = await get(ref(db, `rooms/${roomName}/players`));
-    // NAPRAWIONE: Użycie .size zamiast .numChildren() dla Firebase v12
     if (existing.exists() && existing.size >= 30) {
         throw new Error("Arena jest pełna (30 graczy).");
     }
@@ -152,9 +155,9 @@ async function startGame() {
 
     onDisconnect(myRef).remove();
 
+    // Nasłuchiwanie graczy (Firebase)
     onValue(ref(db, `rooms/${roomName}/players`), snapshot => {
         if (!playing) return;
-
         const data = snapshot.val() || {};
 
         for (const id of Object.keys(remoteMeshes)) {
@@ -166,47 +169,38 @@ async function startGame() {
 
         for (const id in data) {
             if (id === myId) continue;
-
             const p = data[id];
-
-            if (!remoteMeshes[id]) {
-                createRemote(id, p);
-            }
+            if (!remoteMeshes[id]) createRemote(id, p);
 
             const mesh = remoteMeshes[id];
             if (!mesh) continue;
 
             mesh.visible = p.alive !== false;
-            mesh.position.set(
-                Number(p.x) || 0,
-                Number(p.y) || 1,
-                Number(p.z) || 0
-            );
+            mesh.position.set(Number(p.x) || 0, Number(p.y) || 1, Number(p.z) || 0);
             mesh.rotation.y = Number(p.rot) || 0;
 
             if (mesh.userData.hpBar) {
-                mesh.userData.hpBar.scale.x = Math.max(
-                    0,
-                    Math.min(1, (p.hp || 0) / MAX_HEALTH)
-                );
+                mesh.userData.hpBar.scale.x = Math.max(0, Math.min(1, (p.hp || 0) / MAX_HEALTH));
             }
-
             mesh.userData.playerData = p;
         }
-
         updateLeaderboard(data);
+    });
+
+    // Nasłuchiwanie pocisków z sieci (Firebase)
+    onValue(bulletsRef, snapshot => {
+        if (!playing) return;
+        const data = snapshot.val() || {};
+        // Czyszczenie starego stanu i dodawanie nowych wizualnych pocisków od innych
     });
 
     onValue(ref(db, `rooms/${roomName}/players/${myId}`), snapshot => {
         const data = snapshot.val();
         if (!data || !playing) return;
-
-        if (data.hp <= 0 && !dead) {
-            die();
-        }
+        if (data.hp <= 0 && !dead) die();
     });
 
-    document.getElementById("roomInfo").textContent = "ROOM: " + roomName.toUpperCase();
+    document.getElementById("roomInfo").textContent = "ROOM: " + roomName.toUpperCase() + " | BRON: " + weapons[currentWeaponKey].name;
 
     menu.classList.add("hidden");
     hud.classList.remove("hidden");
@@ -215,15 +209,11 @@ async function startGame() {
     playing = true;
 
     renderer.domElement.addEventListener("click", () => {
-        if (!dead && playing) {
-            renderer.domElement.requestPointerLock();
-        }
+        if (!dead && playing) renderer.domElement.requestPointerLock();
     });
 
     renderer.domElement.addEventListener("mousedown", e => {
-        if (e.button === 0 && document.pointerLockElement === renderer.domElement) {
-            shoot();
-        }
+        if (e.button === 0 && document.pointerLockElement === renderer.domElement) shoot();
     });
 
     document.addEventListener("mousemove", mouseMove);
@@ -231,15 +221,14 @@ async function startGame() {
     document.addEventListener("keyup", keyUp);
 
     document.addEventListener("pointerlockchange", () => {
-        lockMessage.style.opacity =
-            document.pointerLockElement === renderer.domElement ? "0" : "1";
+        lockMessage.style.opacity = document.pointerLockElement === renderer.domElement ? "0" : "1";
     });
 
     animate();
 }
 
 // ======================================================
-// SCENA
+// SCENA I GRAFIKA 3D
 // ======================================================
 
 function initScene() {
@@ -247,12 +236,7 @@ function initScene() {
     scene.background = new THREE.Color(0x080c18);
     scene.fog = new THREE.Fog(0x080c18, 45, 110);
 
-    camera = new THREE.PerspectiveCamera(
-        90,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        150
-    );
+    camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 150);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -262,7 +246,6 @@ function initScene() {
     document.body.appendChild(renderer.domElement);
 
     scene.add(new THREE.HemisphereLight(0x8ecaff, 0x111522, 2));
-
     const light = new THREE.DirectionalLight(0xffffff, 2);
     light.position.set(10, 20, 10);
     scene.add(light);
@@ -281,20 +264,15 @@ function resize() {
 }
 
 // ======================================================
-// ARENA
+// TWORZENIE ARENY
 // ======================================================
 
 function createArena() {
     const floor = new THREE.Mesh(
         new THREE.PlaneGeometry(100, 100),
-        new THREE.MeshStandardMaterial({
-            color: 0x121c2d,
-            roughness: 0.8
-        })
+        new THREE.MeshStandardMaterial({ color: 0x121c2d, roughness: 0.8 })
     );
-
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = 0;
     floor.receiveShadow = true;
     scene.add(floor);
 
@@ -312,39 +290,24 @@ function createArena() {
     createBox(4, 3, 12, 15, 1.5, 10, 0x213d5d);
     createBox(12, 4, 4, 15, 2, -15, 0x1b3655);
     createBox(12, 4, 4, -15, 2, 15, 0x1b3655);
-
-    createBox(6, 5, 6, 25, 2.5, 0, 0x213d5d);
-    createBox(6, 5, 6, -25, 2.5, 0, 0x213d5d);
-    createBox(6, 5, 6, 0, 2.5, 25, 0x213d5d);
-    createBox(6, 5, 6, 0, 2.5, -25, 0x213d5d);
-
-    createBox(100, 0.2, 0.2, 0, 7.5, -49, 0x00eaff);
-    createBox(100, 0.2, 0.2, 0, 7.5, 49, 0x00eaff);
 }
 
 function createBox(w, h, d, x, y, z, color) {
     const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(w, h, d),
-        new THREE.MeshStandardMaterial({
-            color,
-            roughness: 0.65
-        })
+        new THREE.MeshStandardMaterial({ color, roughness: 0.65 })
     );
-
     mesh.position.set(x, y, z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
 
-    if (w < 90 && h > 1 && d > 1) {
-        obstacles.push(mesh);
-    }
-
+    if (w < 90 && h > 1 && d > 1) obstacles.push(mesh);
     return mesh;
 }
 
 // ======================================================
-// GRACZ
+// GRACZE I BRONIE WIZUALNE
 // ======================================================
 
 function createPlayer() {
@@ -353,84 +316,46 @@ function createPlayer() {
     playerMesh.position.set(spawn[0], spawn[1], spawn[2]);
     scene.add(playerMesh);
 
-    camera.position.set(
-        playerMesh.position.x,
-        playerMesh.position.y + 0.65,
-        playerMesh.position.z
-    );
+    camera.position.set(playerMesh.position.x, playerMesh.position.y + 0.65, playerMesh.position.z);
     camera.rotation.order = "YXZ";
 
     const gun = new THREE.Group();
     const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.15, 0.6),
-        new THREE.MeshStandardMaterial({
-            color: 0x1d2a3c,
-            metalness: 0.6,
-            roughness: 0.3
-        })
+        new THREE.BoxGeometry(0.15, 0.15, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0x1d2a3c, metalness: 0.7 })
     );
-    body.position.set(0.28, -0.25, -0.55);
-
-    const barrel = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05, 0.05, 0.4),
-        new THREE.MeshStandardMaterial({
-            color: 0x00eaff,
-            emissive: 0x00eaff,
-            emissiveIntensity: 1.5
-        })
-    );
-    barrel.position.set(0.28, -0.22, -0.9);
-
+    body.position.set(0.25, -0.2, -0.5);
     gun.add(body);
-    gun.add(barrel);
     camera.add(gun);
     gunMesh = gun;
-
     scene.add(camera);
 }
 
-// ======================================================
-// GRACZE ZDALNI
-// ======================================================
-
 function createRemote(id, p) {
     const group = new THREE.Group();
-
     const body = new THREE.Mesh(
         new THREE.BoxGeometry(0.8, 1.4, 0.5),
-        new THREE.MeshStandardMaterial({
-            color: p.color || 0xff3355
-        })
+        new THREE.MeshStandardMaterial({ color: p.color || 0xff3355 })
     );
     body.position.y = 0.8;
 
     const head = new THREE.Mesh(
         new THREE.BoxGeometry(0.45, 0.45, 0.45),
-        new THREE.MeshStandardMaterial({
-            color: 0xffd6b0
-        })
+        new THREE.MeshStandardMaterial({ color: 0xffd6b0 })
     );
     head.position.y = 1.65;
 
     group.add(body);
     group.add(head);
 
-    const barBackground = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 0.12, 0.05),
-        new THREE.MeshBasicMaterial({ color: 0x222222 })
-    );
-    barBackground.position.y = 2.2;
-
-    const bar = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 0.12, 0.05),
-        new THREE.MeshBasicMaterial({ color: 0x00ff99 })
-    );
+    const barBg = new THREE.Mesh(new THREE.BoxGeometry(1, 0.12, 0.05), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+    barBg.position.y = 2.2;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1, 0.12, 0.05), new THREE.MeshBasicMaterial({ color: 0x00ff99 }));
     bar.position.y = 2.2;
     bar.position.z = 0.01;
 
-    group.add(barBackground);
+    group.add(barBg);
     group.add(bar);
-
     group.userData.hpBar = bar;
     group.userData.playerData = p;
 
@@ -439,68 +364,58 @@ function createRemote(id, p) {
 }
 
 // ======================================================
-// MYSZ I STEROWANIE
+// STEROWANIE I ZMIANA BRONI (1, 2, 3)
 // ======================================================
 
 function mouseMove(e) {
-    if (!playing || dead) return;
-    if (document.pointerLockElement !== renderer.domElement) return;
-
+    if (!playing || dead || document.pointerLockElement !== renderer.domElement) return;
     camera.rotation.y -= e.movementX * 0.002;
     camera.rotation.x -= e.movementY * 0.002;
-
-    camera.rotation.x = Math.max(
-        -Math.PI / 2 + 0.05,
-        Math.min(Math.PI / 2 - 0.05, camera.rotation.x)
-    );
+    camera.rotation.x = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, camera.rotation.x));
 }
 
 function keyDown(e) {
     keys[e.code] = true;
 
-    if (e.code === "Space") {
-        e.preventDefault();
-        if (onGround && !dead) {
-            velocityY = JUMP;
-            onGround = false;
-        }
+    if (e.code === "Space" && onGround && !dead) {
+        velocityY = JUMP;
+        onGround = false;
     }
+
+    // Wybór broni klawiszami 1, 2, 3
+    if (e.code === "Digit1" || e.code === "Numpad1") setWeapon(1);
+    if (e.code === "Digit2" || e.code === "Numpad2") setWeapon(2);
+    if (e.code === "Digit3" || e.code === "Numpad3") setWeapon(3);
 }
 
-function keyUp(e) {
-    keys[e.code] = false;
+function keyUp(e) { keys[e.code] = false; }
+
+function setWeapon(key) {
+    if (weapons[key]) {
+        currentWeaponKey = key;
+        document.getElementById("roomInfo").textContent = "ROOM: " + roomName.toUpperCase() + " | BRON: " + weapons[currentWeaponKey].name;
+    }
 }
 
 function updateMovement(delta) {
     if (dead || !playing) return;
-
-    let forward = 0;
-    let sideways = 0;
-
+    let forward = 0, sideways = 0;
     if (keys["KeyW"]) forward += 1;
     if (keys["KeyS"]) forward -= 1;
     if (keys["KeyA"]) sideways -= 1;
     if (keys["KeyD"]) sideways += 1;
 
     const speed = keys["ShiftLeft"] || keys["ShiftRight"] ? SPRINT_SPEED : SPEED;
-
     const movement = new THREE.Vector3(sideways, 0, -forward);
 
     if (movement.length() > 0) {
-        movement.normalize();
-        movement.multiplyScalar(speed * delta);
+        movement.normalize().multiplyScalar(speed * delta);
         movement.applyAxisAngle(new THREE.Vector3(0, 1, 0), camera.rotation.y);
 
         const nextX = playerMesh.position.x + movement.x;
         const nextZ = playerMesh.position.z + movement.z;
-
-        if (!collides(nextX, playerMesh.position.z)) {
-            playerMesh.position.x = nextX;
-        }
-
-        if (!collides(playerMesh.position.x, nextZ)) {
-            playerMesh.position.z = nextZ;
-        }
+        if (!collides(nextX, playerMesh.position.z)) playerMesh.position.x = nextX;
+        if (!collides(playerMesh.position.x, nextZ)) playerMesh.position.z = nextZ;
     }
 
     velocityY -= GRAVITY * delta;
@@ -512,120 +427,100 @@ function updateMovement(delta) {
         onGround = true;
     }
 
-    camera.position.set(
-        playerMesh.position.x,
-        playerMesh.position.y + 0.65,
-        playerMesh.position.z
-    );
+    camera.position.set(playerMesh.position.x, playerMesh.position.y + 0.65, playerMesh.position.z);
 }
 
 function collides(x, z) {
-    if (x < -48 || x > 48 || z < -48 || z > 48) {
-        return true;
-    }
-
+    if (x < -48 || x > 48 || z < -48 || z > 48) return true;
     for (const obstacle of obstacles) {
         const box = new THREE.Box3().setFromObject(obstacle);
-
-        if (
-            x > box.min.x - PLAYER_RADIUS &&
-            x < box.max.x + PLAYER_RADIUS &&
-            z > box.min.z - PLAYER_RADIUS &&
-            z < box.max.z + PLAYER_RADIUS &&
-            playerMesh.position.y < box.max.y + 0.2
-        ) {
-            return true;
-        }
+        if (x > box.min.x - PLAYER_RADIUS && x < box.max.x + PLAYER_RADIUS &&
+            z > box.min.z - PLAYER_RADIUS && z < box.max.z + PLAYER_RADIUS &&
+            playerMesh.position.y < box.max.y + 0.2) return true;
     }
-
     return false;
 }
 
 // ======================================================
-// STRZELANIE
+// ROZBUDOWANE STRZELANIE I WIZUALIZACJA POCISKÓW 3D
 // ======================================================
 
 async function shoot() {
     if (!playing || dead) return;
-
     const now = Date.now();
-    if (now - lastShot < FIRE_RATE) return;
+    const weapon = weapons[currentWeaponKey];
+
+    if (now - lastShot < weapon.fireRate) return;
     lastShot = now;
 
-    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-    const targets = [];
-    for (const id in remoteMeshes) {
-        if (remoteMeshes[id].visible) {
-            targets.push(remoteMeshes[id]);
-        }
+    // Efekt odrzutu broni (cofnięcie i powrót)
+    if (gunMesh) {
+        gunMesh.position.z += 0.15;
+        setTimeout(() => { gunMesh.position.z = 0; }, 80);
     }
 
-    const hits = raycaster.intersectObjects(targets, true);
-    if (!hits.length) return;
+    // Obsługa rozrzutu i wielu pocisków (np. Strzelba)
+    for (let i = 0; i < weapon.count; i++) {
+        const dir = new THREE.Vector3(0, 0, -1);
+        const spreadX = (Math.random() - 0.5) * weapon.spread;
+        const spreadY = (Math.random() - 0.5) * weapon.spread;
+        
+        raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), camera);
 
-    const hit = hits[0];
-    let currentObj = hit.object;
-    let victimId = null;
-
-    while (currentObj && currentObj !== scene) {
+        const targets = [];
         for (const id in remoteMeshes) {
-            if (remoteMeshes[id] === currentObj) {
-                victimId = id;
-                break;
+            if (remoteMeshes[id].visible) targets.push(remoteMeshes[id]);
+        }
+
+        const hits = raycaster.intersectObjects(targets, true);
+        if (hits.length > 0) {
+            const hit = hits[0];
+            let currentObj = hit.object;
+            let victimId = null;
+
+            while (currentObj && currentObj !== scene) {
+                for (const id in remoteMeshes) {
+                    if (remoteMeshes[id] === currentObj) { victimId = id; break; }
+                }
+                if (victimId) break;
+                currentObj = currentObj.parent;
+            }
+
+            if (victimId) {
+                const targetGroup = remoteMeshes[victimId];
+                const victim = targetGroup ? targetGroup.userData.playerData : null;
+
+                if (victim && victim.alive !== false && victim.hp > 0) {
+                    const isHeadshot = hit.object.geometry && hit.object.geometry.type === "BoxGeometry" && hit.object.position.y > 1.4;
+                    const dmg = isHeadshot ? weapon.headDamage : weapon.damage;
+
+                    showHitmarker();
+                    const victimRef = ref(db, `rooms/${roomName}/players/${victimId}`);
+
+                    try {
+                        const snapshot = await get(victimRef);
+                        if (snapshot.exists()) {
+                            const data = snapshot.val();
+                            const newHP = Math.max(0, data.hp - dmg);
+                            await update(victimRef, { hp: newHP, alive: newHP > 0 });
+
+                            if (newHP <= 0) {
+                                kills++;
+                                await update(myRef, { kills, updated: Date.now() });
+                                addKillfeed(myName, data.name);
+                            }
+                        }
+                    } catch (err) { console.error(err); }
+                }
             }
         }
-        if (victimId) break;
-        currentObj = currentObj.parent;
-    }
-
-    if (!victimId) return;
-
-    const targetGroup = remoteMeshes[victimId];
-    const victim = targetGroup ? targetGroup.userData.playerData : null;
-
-    if (!victim || victim.alive === false || victim.hp <= 0) return;
-
-    const isHeadshot = hit.object.geometry && hit.object.geometry.type === "BoxGeometry" && hit.object.position.y > 1.4;
-    const damage = isHeadshot ? HEAD_DAMAGE : DAMAGE;
-
-    showHitmarker();
-
-    const victimRef = ref(db, `rooms/${roomName}/players/${victimId}`);
-
-    try {
-        const snapshot = await get(victimRef);
-        if (!snapshot.exists()) return;
-
-        const data = snapshot.val();
-        if (!data || data.hp <= 0 || data.alive === false) return;
-
-        const newHP = Math.max(0, data.hp - damage);
-
-        await update(victimRef, {
-            hp: newHP,
-            alive: newHP > 0
-        });
-
-        if (newHP <= 0) {
-            kills++;
-            await update(myRef, {
-                kills,
-                updated: Date.now()
-            });
-            addKillfeed(myName, data.name);
-        }
-    } catch (err) {
-        console.error("Błąd podczas strzału:", err);
     }
 }
 
 function showHitmarker() {
     hitmarkerUI.style.opacity = "1";
     clearTimeout(lastHitmarker);
-    lastHitmarker = setTimeout(() => {
-        hitmarkerUI.style.opacity = "0";
-    }, 120);
+    lastHitmarker = setTimeout(() => { hitmarkerUI.style.opacity = "0"; }, 120);
 }
 
 // ======================================================
@@ -634,10 +529,8 @@ function showHitmarker() {
 
 async function die() {
     if (dead) return;
-
     dead = true;
     deaths++;
-
     deathsUI.textContent = deaths;
     health = 0;
     healthUI.textContent = 0;
@@ -646,78 +539,50 @@ async function die() {
     respawnUI.classList.remove("hidden");
 
     try {
-        await update(myRef, {
-            deaths,
-            hp: 0,
-            alive: false
-        });
-    } catch (err) {
-        console.error(err);
-    }
+        await update(myRef, { deaths, hp: 0, alive: false });
+    } catch (err) { console.error(err); }
 
     setTimeout(respawnPlayer, 2500);
 }
 
 async function respawnPlayer() {
     if (!playing) return;
-
     const spawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
     playerMesh.position.set(spawn[0], spawn[1], spawn[2]);
-
     camera.position.set(spawn[0], spawn[1] + 0.65, spawn[2]);
 
     velocityY = 0;
     onGround = true;
     health = MAX_HEALTH;
     dead = false;
-
     healthUI.textContent = health;
     respawnUI.classList.add("hidden");
 
     try {
         await update(myRef, {
-            x: playerMesh.position.x,
-            y: playerMesh.position.y,
-            z: playerMesh.position.z,
-            hp: MAX_HEALTH,
-            alive: true,
-            deaths
+            x: playerMesh.position.x, y: playerMesh.position.y, z: playerMesh.position.z,
+            hp: MAX_HEALTH, alive: true, deaths
         });
-    } catch (err) {
-        console.error(err);
-    }
+    } catch (err) { console.error(err); }
 
     renderer.domElement.requestPointerLock();
 }
 
 // ======================================================
-// HUD I TABLICA WYNIKÓW
+// HUD ORAZ TABLICA WYNIKÓW
 // ======================================================
 
 function updateLeaderboard(data) {
     const list = Object.entries(data)
-        .map(([id, p]) => ({
-            id,
-            name: p.name || "Player",
-            kills: p.kills || 0
-        }))
+        .map(([id, p]) => ({ id, name: p.name || "Player", kills: p.kills || 0 }))
         .sort((a, b) => b.kills - a.kills)
         .slice(0, 8);
 
     leaderboardUI.innerHTML = "";
-
     list.forEach((p, i) => {
         const row = document.createElement("div");
         row.className = "leader-row";
-
-        const name = document.createElement("span");
-        name.textContent = `${i + 1}. ${p.name}`;
-
-        const score = document.createElement("span");
-        score.textContent = p.kills;
-
-        row.appendChild(name);
-        row.appendChild(score);
+        row.innerHTML = `<span>${i + 1}. ${p.name}</span><span>${p.kills}</span>`;
         leaderboardUI.appendChild(row);
     });
 }
@@ -725,49 +590,30 @@ function updateLeaderboard(data) {
 function addKillfeed(killer, victim) {
     const entry = document.createElement("div");
     entry.className = "kill-entry";
-    entry.textContent = `${killer}  ✕  ${victim}`;
-
+    entry.textContent = `${killer} ✕ ${victim}`;
     const feed = document.getElementById("killfeed");
     feed.prepend(entry);
-
-    setTimeout(() => {
-        entry.remove();
-    }, 4000);
+    setTimeout(() => entry.remove(), 4000);
 }
-
-// ======================================================
-// SYNCHRONIZACJA Z BAZĄ
-// ======================================================
 
 async function syncPlayer() {
     if (!playing || dead || !myRef) return;
-
     try {
         await update(myRef, {
-            x: playerMesh.position.x,
-            y: playerMesh.position.y,
-            z: playerMesh.position.z,
-            rot: camera.rotation.y,
-            hp: health,
-            kills,
-            deaths,
-            alive: true,
-            updated: Date.now()
+            x: playerMesh.position.x, y: playerMesh.position.y, z: playerMesh.position.z,
+            rot: camera.rotation.y, hp: health, kills, deaths, alive: true, updated: Date.now()
         });
-    } catch (err) {
-        console.error("Sync:", err);
-    }
+    } catch (err) { console.error(err); }
 }
 
 // ======================================================
-// PĘTLA GRY
+// GŁÓWNA PĘTLA GRY
 // ======================================================
 
 let lastTime = performance.now();
 
 function animate() {
     if (!playing) return;
-
     requestAnimationFrame(animate);
 
     const now = performance.now();
@@ -778,11 +624,7 @@ function animate() {
     updateMovement(delta);
 
     if (playerMesh) {
-        camera.position.set(
-            playerMesh.position.x,
-            playerMesh.position.y + 0.65,
-            playerMesh.position.z
-        );
+        camera.position.set(playerMesh.position.x, playerMesh.position.y + 0.65, playerMesh.position.z);
     }
 
     if (Date.now() - lastSync > 100) {
@@ -793,12 +635,6 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// ======================================================
-// WYJŚCIE
-// ======================================================
-
 window.addEventListener("beforeunload", () => {
-    if (myRef) {
-        remove(myRef);
-    }
+    if (myRef) remove(myRef);
 });
